@@ -1,0 +1,71 @@
+# Construit l'APK Android d'Atelier PDF avec les outils officiels d'Android.
+# Résultat : branche « builds » (APK aligné, non signé — la signature se fait hors de GitHub,
+# avec une clé qui ne doit jamais être publiée).
+name: APK Android
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'atelier-pdf/**'
+      - 'atelier-pdf-android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-build
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Préparer l'application web
+        working-directory: atelier-pdf-android
+        run: |
+          npm ci --no-audit --no-fund
+          node prepare.js
+          npx cap sync android
+
+      - name: Construire l'APK
+        working-directory: atelier-pdf-android/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Aligner l'APK et joindre l'outil de signature officiel
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          echo "build-tools : $BT"
+          mkdir -p out
+          VERSION=$(node -p "require('./atelier-pdf-android/package.json').version")
+          "$BT/zipalign" -p -f 4 atelier-pdf-android/android/app/build/outputs/apk/release/app-release-unsigned.apk "out/Atelier-PDF-$VERSION-non-signe.apk"
+          "$BT/zipalign" -c -p 4 "out/Atelier-PDF-$VERSION-non-signe.apk"
+          cp "$BT/lib/apksigner.jar" out/
+          basename "$BT" > out/build-tools-version.txt
+          (cd out && sha256sum * > SHA256SUMS.txt)
+          echo "${GITHUB_SHA}" > out/commit.txt
+
+      - name: Publier sur la branche « builds »
+        run: |
+          cd out
+          git init -q -b builds
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "APK construit depuis ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" builds

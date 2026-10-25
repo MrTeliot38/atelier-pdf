@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- fichiers préparés pour le partage et l'impression (cache de l'application) -->
+    <cache-path name="partage" path="partage/" />
+    <!-- photos prises depuis un champ « fichier » (caméra du système) -->
+    <external-files-path name="photos" path="Pictures/" />
+</paths>

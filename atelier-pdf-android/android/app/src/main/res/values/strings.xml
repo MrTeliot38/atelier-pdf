@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Atelier PDF</string>
+    <string name="title_activity_main">Atelier PDF</string>
+    <string name="package_name">fr.atelierpdf.app</string>
+    <string name="custom_url_scheme">fr.atelierpdf.app</string>
+</resources>

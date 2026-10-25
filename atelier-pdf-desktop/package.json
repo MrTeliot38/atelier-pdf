@@ -1,0 +1,74 @@
+{
+  "name": "atelier-pdf",
+  "productName": "Atelier PDF",
+  "version": "1.5.0",
+  "description": "Retoucher, remplir, signer et réorganiser des PDF",
+  "author": "Atelier PDF",
+  "license": "MIT",
+  "main": "main.js",
+  "private": true,
+  "devDependencies": {
+    "electron": "44.9.3",
+    "@electron/fuses": "1.8.0",
+    "electron-builder": "^26.18.0",
+    "resedit": "^3.1.0"
+  },
+  "scripts": {
+    "copy-app": "node prepare.js",
+    "start": "node prepare.js && electron .",
+    "dist": "node prepare.js && electron-builder --win nsis --x64"
+  },
+  "build": {
+    "appId": "fr.atelierpdf.app",
+    "productName": "Atelier PDF",
+    "copyright": "Logiciel libre",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "fontnames.cjs",
+      "app/**/*",
+      "package.json"
+    ],
+    "afterPack": "build/afterPack.js",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
+      "executableName": "Atelier PDF"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Atelier PDF",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "language": "1036",
+      "installerLanguages": [
+        "fr_FR"
+      ],
+      "artifactName": "Atelier-PDF-Setup-${version}.exe",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "include": "build/installer.nsh"
+    },
+    "electronLanguages": [
+      "fr",
+      "en-US"
+    ]
+  }
+}

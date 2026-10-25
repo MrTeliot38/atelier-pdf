@@ -1,0 +1,7 @@
+pdfjs-dist 6.4.299 Apache-2.0
+pdf-lib 1.17.1 MIT
+@pdf-lib/fontkit 1.1.1 MIT
+jszip 3.10.2 (MIT OR GPL-3.0-or-later)
+sortablejs 1.15.7 MIT
+tesseract.js 7.0.0 Apache-2.0
+tesseract.js-core 7.0.0 Apache-2.0
