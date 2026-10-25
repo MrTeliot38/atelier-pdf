@@ -206,11 +206,19 @@ export async function pageCanvas(page, minScale = 2) {
   if (s && s.key && s.canvas.width > 1 && s.scale >= minScale) return { canvas: s.canvas, scale: s.scale };
   const c = document.createElement('canvas');
   if (!page.src) { c.width = Math.ceil(page.w * minScale); c.height = Math.ceil(page.h * minScale); const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); return { canvas: c, scale: minScale }; }
-  const pdfPage = await state.sources.get(page.src).pdf.getPage(page.index + 1);
-  const vp = pdfPage.getViewport({ scale: minScale });
-  c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
-  await pdfPage.render({ canvas: c, viewport: vp, annotationMode: pdfjsLib.AnnotationMode.ENABLE_FORMS }).promise;
-  return { canvas: c, scale: minScale };
+  try {
+    const pdfPage = await state.sources.get(page.src).pdf.getPage(page.index + 1);
+    const vp = pdfPage.getViewport({ scale: minScale });
+    c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+    await pdfPage.render({ canvas: c, viewport: vp, annotationMode: pdfjsLib.AnnotationMode.ENABLE_FORMS }).promise;
+    return { canvas: c, scale: minScale };
+  } catch (e) {
+    // mémoire insuffisante (téléphone) : on se rabat sur l'image déjà affichée à l'écran
+    console.warn('Rendu de la page', e);
+    if (s && s.key && s.canvas.width > 1) return { canvas: s.canvas, scale: s.scale };
+    if (minScale > 1.2) return pageCanvas(page, minScale / 2);
+    throw e;
+  }
 }
 
 /* --------------------------------------------------- page courante */

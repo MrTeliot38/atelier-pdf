@@ -8,6 +8,7 @@ Ce dossier fabrique l'APK Android à partir de l'application web du dossier vois
 - **Qualité du PDF** au choix : faible (≈ 150 ppp, idéal WhatsApp et e-mail), moyenne (≈ 200 ppp) ou élevée (≈ 300 ppp), avec le poids estimé.
 - **Partager** le PDF (WhatsApp, e-mail, Drive, Messages…) par le menu de partage d'Android, l'**enregistrer** dans le dossier de son choix, ou l'**ouvrir dans l'éditeur** pour le modifier, le signer, l'annoter.
 - **Ouvrir avec Atelier PDF** depuis Fichiers, Gmail, WhatsApp… et **Partager vers Atelier PDF** (un PDF s'ouvre dans l'éditeur, des photos ouvrent le scanner).
+- **Lecteur PDF par défaut** : menu ⋮ › « Lecteur PDF par défaut… » (ou le lien de l'écran d'accueil). Android ne laisse pas une application se désigner elle-même : l'écran indique quelle application ouvre actuellement les PDF, ouvre ses réglages pour « Effacer les préférences par défaut », puis ouvre un PDF d'essai où il suffit de choisir Atelier PDF et « Toujours ».
 - **Imprimer** par le service d'impression d'Android.
 - Toutes les fonctions de l'éditeur : corriger le texte (y compris des scans), remplir, signer, réorganiser les pages, exporter en images.
 

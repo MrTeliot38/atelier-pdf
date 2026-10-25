@@ -73,3 +73,13 @@ export function initBackButton(fallback) {
     native.exitApp();
   });
 }
+
+/* ---------------- lecteur PDF par défaut (Android) ---------------- */
+export const TEST_PDF_NAME = 'Atelier PDF - lecteur par defaut.pdf';
+export async function defaultPdfStatus() {
+  try { return await native.defaultPdfStatus(); } catch { return { isDefault: false, hasOther: false }; }
+}
+export const openAppSettings = pkg => native.openAppSettings({ package: pkg });
+export async function openTestPdf(bytes) {
+  return native.openTestPdf({ name: TEST_PDF_NAME, data: await blobToBase64(new Blob([bytes], { type: 'application/pdf' })) });
+}

@@ -5,6 +5,9 @@ import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.content.pm.ResolveInfo;
+import android.provider.Settings;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
@@ -288,6 +291,74 @@ public class AtelierNativePlugin extends Plugin {
             } catch (Exception e) {
                 callback.onWriteFailed(e.getMessage());
             }
+        }
+    }
+
+    /* ---------------- lecteur PDF par défaut ---------------- */
+    // Android ne permet pas à une application de se désigner elle-même : on indique l'état actuel,
+    // on ouvre les réglages de l'application qui garde les PDF, puis on ouvre un PDF d'essai pour que
+    // la personne choisisse « Atelier PDF » et « Toujours ».
+
+    private Intent pdfViewIntent(Uri uri) {
+        Intent i = new Intent(Intent.ACTION_VIEW);
+        i.setDataAndType(uri, "application/pdf");
+        i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        return i;
+    }
+
+    @PluginMethod
+    public void defaultPdfStatus(PluginCall call) {
+        JSObject r = new JSObject();
+        try {
+            PackageManager pm = getContext().getPackageManager();
+            Uri probe = Uri.parse("content://" + getContext().getPackageName() + ".fileprovider/partage/essai.pdf");
+            ResolveInfo ri = pm.resolveActivity(pdfViewIntent(probe), PackageManager.MATCH_DEFAULT_ONLY);
+            String pkg = ri != null && ri.activityInfo != null ? ri.activityInfo.packageName : null;
+            String cls = ri != null && ri.activityInfo != null ? ri.activityInfo.name : "";
+            boolean mine = getContext().getPackageName().equals(pkg);
+            boolean none = pkg == null || "android".equals(pkg) || pkg.contains("intentresolver") || cls.contains("Resolver") || cls.contains("Chooser");
+            r.put("isDefault", mine);
+            r.put("hasOther", !mine && !none);
+            if (!mine && !none) {
+                r.put("package", pkg);
+                r.put("label", ri.loadLabel(pm).toString());
+            }
+        } catch (Exception e) {
+            r.put("isDefault", false);
+            r.put("hasOther", false);
+        }
+        call.resolve(r);
+    }
+
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        String pkg = call.getString("package", getContext().getPackageName());
+        try {
+            Intent i = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", pkg, null));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getActivity().startActivity(i);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Réglages indisponibles : " + e.getMessage());
+        }
+    }
+
+    @PluginMethod
+    public void openTestPdf(PluginCall call) {
+        String name = call.getString("name", "Atelier PDF - essai.pdf");
+        String data = call.getString("data");
+        if (data == null) { call.reject("Aucune donnée"); return; }
+        try {
+            File f = writeShareFile(name, data);
+            Context ctx = getContext();
+            Uri uri = FileProvider.getUriForFile(ctx, ctx.getPackageName() + ".fileprovider", f);
+            Intent i = pdfViewIntent(uri);
+            i.setClipData(ClipData.newRawUri(f.getName(), uri));
+            // pas de « choisir avec » : la fenêtre système propose « Toujours » quand aucun lecteur n'est fixé
+            getActivity().startActivity(i);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Ouverture impossible : " + e.getMessage());
         }
     }
 

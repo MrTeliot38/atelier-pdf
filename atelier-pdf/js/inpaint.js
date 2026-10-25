@@ -32,8 +32,21 @@ export async function textErasePatch(page, rect, fg, bg) {
     for (let y = my0; y < my1; y++) for (let x = mx0; x < mx1; x++) {
       const i = (y * W + x) * 4;
       const df = dist(d[i], d[i + 1], d[i + 2], F), db = dist(d[i], d[i + 1], d[i + 2], B);
-      // proche de la couleur du texte, ou nettement différent du fond (bords adoucis des lettres, scan bruité)
-      mask[y * W + x] = gap < 60 ? 1 : (df < gap * 0.75 || db > Math.max(20, gap * 0.07) ? 1 : 0);
+      // proche de la couleur du texte (les bords adoucis des lettres sont pris ensuite, par élargissement)
+      // couleurs du texte et du fond trop proches pour les distinguer : toute la zone est reconstituée
+      mask[y * W + x] = gap < 60 ? (x >= rx0 && x < rx1 && y >= ry0 && y < ry1 ? 1 : 0) : (df < gap * 0.6 ? 1 : 0);
+    }
+    // 1 bis. une zone « couleur du texte » qui touche le bord du découpage n'est pas une lettre :
+    //   c'est le fond autour d'un encadré (texte blanc dans un cadre bleu sur une page blanche…)
+    if (gap >= 60) {
+      const lab = new Uint8Array(W * H), st = [];
+      const flood = s0 => { st.push(s0); lab[s0] = 1; while (st.length) { const j = st.pop(), x = j % W; mask[j] = 0;
+        if (x > 0 && mask[j - 1] && !lab[j - 1]) { lab[j - 1] = 1; st.push(j - 1); }
+        if (x < W - 1 && mask[j + 1] && !lab[j + 1]) { lab[j + 1] = 1; st.push(j + 1); }
+        if (j >= W && mask[j - W] && !lab[j - W]) { lab[j - W] = 1; st.push(j - W); }
+        if (j < W * (H - 1) && mask[j + W] && !lab[j + W]) { lab[j + W] = 1; st.push(j + W); } } };
+      for (let x = mx0; x < mx1; x++) { if (mask[my0 * W + x] && !lab[my0 * W + x]) flood(my0 * W + x); if (mask[(my1 - 1) * W + x] && !lab[(my1 - 1) * W + x]) flood((my1 - 1) * W + x); }
+      for (let y = my0; y < my1; y++) { if (mask[y * W + mx0] && !lab[y * W + mx0]) flood(y * W + mx0); if (mask[y * W + mx1 - 1] && !lab[y * W + mx1 - 1]) flood(y * W + mx1 - 1); }
     }
     // 2. on élargit un peu (bords adoucis des lettres)
     const r = Math.max(3, Math.round(s * 2));
@@ -59,34 +72,47 @@ export async function textErasePatch(page, rect, fg, bg) {
       }
       K[y * W + x] = ok ? 1 : 0;
     }
-    // sommes cumulées (fond seulement) pour des moyennes sur fenêtre en temps constant
+    // sommes cumulées pour des moyennes sur fenêtre en temps constant.
+    // On se sert d'abord des pixels qui ressemblent au fond (un encadré bleu se remplit de bleu, jamais du
+    // blanc de la page qui l'entoure) ; à défaut (dégradé, photo), de tout le fond visible.
     const W1 = W + 1;
-    const SN = new Float64Array(W1 * (H + 1)), SR = new Float64Array(W1 * (H + 1)), SG = new Float64Array(W1 * (H + 1)), SB = new Float64Array(W1 * (H + 1));
-    for (let y = 0; y < H; y++) {
-      let n = 0, rr = 0, gg = 0, bb = 0;
-      for (let x = 0; x < W; x++) {
-        const k = y * W + x, i = k * 4;
-        if (K[k]) { n++; rr += d[i]; gg += d[i + 1]; bb += d[i + 2]; }
-        const o = (y + 1) * W1 + x + 1, u = y * W1 + x + 1;
-        SN[o] = SN[u] + n; SR[o] = SR[u] + rr; SG[o] = SG[u] + gg; SB[o] = SB[u] + bb;
+    const sums = keep => {
+      const SN = new Float64Array(W1 * (H + 1)), SR = new Float64Array(W1 * (H + 1)), SG = new Float64Array(W1 * (H + 1)), SB = new Float64Array(W1 * (H + 1));
+      for (let y = 0; y < H; y++) {
+        let n = 0, rr = 0, gg = 0, bb = 0;
+        for (let x = 0; x < W; x++) {
+          const k = y * W + x, i = k * 4;
+          if (keep(k, i)) { n++; rr += d[i]; gg += d[i + 1]; bb += d[i + 2]; }
+          const o = (y + 1) * W1 + x + 1, u = y * W1 + x + 1;
+          SN[o] = SN[u] + n; SR[o] = SR[u] + rr; SG[o] = SG[u] + gg; SB[o] = SB[u] + bb;
+        }
       }
-    }
+      return { SN, SR, SG, SB };
+    };
+    const bgTol = Math.max(45, gap * 0.3);
+    const like = sums((k, i) => K[k] && dist(d[i], d[i + 1], d[i + 2], B) < bgTol);
+    let any = null;
     const box = (S, x0, y0, x1, y1) => S[y1 * W1 + x1] - S[y0 * W1 + x1] - S[y1 * W1 + x0] + S[y0 * W1 + x0];
     const base = Math.max(4, Math.round(s * 2.5));
     const out8 = new Uint8ClampedArray(d.length); out8.set(d);
+    const avg = (T, x, y, i) => {
+      for (let R = base; R <= Math.max(W, H) * 2; R *= 2) {
+        const x0 = Math.max(0, x - R), y0 = Math.max(0, y - R), x1 = Math.min(W, x + R + 1), y1 = Math.min(H, y + R + 1);
+        const n = box(T.SN, x0, y0, x1, y1);
+        // fond ressemblant trop éloigné : on n'insiste pas au-delà de quelques largeurs de lettre
+        if (n >= 12) { out8[i] = box(T.SR, x0, y0, x1, y1) / n; out8[i + 1] = box(T.SG, x0, y0, x1, y1) / n; out8[i + 2] = box(T.SB, x0, y0, x1, y1) / n; return true; }
+        if (T === like && R >= base * 8) return false;
+      }
+      return false;
+    };
     for (let y = my0; y < my1; y++) for (let x = mx0; x < mx1; x++) {
       if (!mask[y * W + x]) continue;
-      for (let R = base; ; R *= 2) {
-        const x0 = Math.max(0, x - R), y0 = Math.max(0, y - R), x1 = Math.min(W, x + R + 1), y1 = Math.min(H, y + R + 1);
-        const n = box(SN, x0, y0, x1, y1);
-        if (n >= 12 || R > Math.max(W, H)) {
-          const i = (y * W + x) * 4;
-          if (n) { out8[i] = box(SR, x0, y0, x1, y1) / n; out8[i + 1] = box(SG, x0, y0, x1, y1) / n; out8[i + 2] = box(SB, x0, y0, x1, y1) / n; }
-          else { out8[i] = B[0]; out8[i + 1] = B[1]; out8[i + 2] = B[2]; }
-          out8[i + 3] = 255;
-          break;
-        }
+      const i = (y * W + x) * 4;
+      if (!avg(like, x, y, i)) {
+        any = any || sums(k => K[k]);
+        if (!avg(any, x, y, i)) { out8[i] = B[0]; out8[i + 1] = B[1]; out8[i + 2] = B[2]; }
       }
+      out8[i + 3] = 255;
     }
     d.set(out8);
     // 5. image de la zone seule

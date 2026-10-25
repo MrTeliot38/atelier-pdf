@@ -14,9 +14,9 @@ import { savePdf, openShareDialog } from './share.js';
 import { modal, confirmDialog, isModalOpen } from './ui.js';
 import { commit } from './core.js';
 import { openScanner, isScannerOpen } from './scanner.js';
-import { isAndroidApp, isTouch, saveBlob, printPdf, onIncomingFiles, initBackButton } from './platform.js';
+import { isAndroidApp, isTouch, saveBlob, printPdf, onIncomingFiles, initBackButton, defaultPdfStatus, openAppSettings, openTestPdf, TEST_PDF_NAME } from './platform.js';
 
-const VERSION = '1.6.2';
+const VERSION = '1.6.3';
 const desktop = window.atelierDesktop;
 if (desktop) document.body.classList.add('is-desktop');
 const isMobile = () => window.innerWidth < 860;
@@ -285,12 +285,24 @@ if (isAndroidApp) {
   $('[data-act="flat"]').textContent = 'Enregistrer un PDF aplati (sans texte caché)…';
   $('.drop-hint').hidden = true;
   // PDF ouverts depuis une autre application ; photos partagées vers Atelier PDF → scanner
-  onIncomingFiles(files => {
+  onIncomingFiles(async files => {
+    // PDF d'essai ouvert pour le réglage « lecteur par défaut » : on confirme simplement
+    if (files.some(f => f.name === TEST_PDF_NAME)) {
+      files = files.filter(f => f.name !== TEST_PDF_NAME);
+      const st = await refreshDefaultStatus();
+      if (st?.isDefault) toast('C\'est fait : vos PDF s\'ouvriront désormais avec Atelier PDF.', { duration: 7000 });
+      else toast('Pour que ce soit permanent, choisissez Atelier PDF puis « Toujours ».', { duration: 8000, action: { label: 'Réessayer', fn: () => defaultReaderDialog() } });
+      if (!files.length) return;
+    }
     const pdfs = files.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
     const imgs = files.filter(f => !pdfs.includes(f));
     if (pdfs.length) handleFiles(pdfs);
     if (imgs.length && !isScannerOpen()) scanNew(imgs);
   });
+  // lecteur PDF par défaut : menu ⋮ et rappel sur l'écran d'accueil
+  $('[data-act="default"]').hidden = false;
+  refreshDefaultStatus();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshDefaultStatus(); });
   // bouton Retour : fermer ce qui est ouvert, puis demander avant de quitter avec des modifications
   initBackButton(async () => {
     if (isModalOpen()) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true; }
@@ -305,8 +317,16 @@ if (isAndroidApp) {
 }
 
 /* ------------------------------------------------ lecteur PDF par défaut (Windows) */
-var isDefaultReader = false;
+var isDefaultReader = false, defaultInfo = null, defaultDialogRefresh = null;
 async function refreshDefaultStatus() {
+  if (isAndroidApp) {
+    defaultInfo = await defaultPdfStatus();
+    isDefaultReader = !!defaultInfo.isDefault;
+    $('[data-act="default"]').textContent = isDefaultReader ? '✓ Lecteur PDF par défaut' : 'Lecteur PDF par défaut…';
+    $('#defaultHint').hidden = isDefaultReader;
+    defaultDialogRefresh?.();
+    return defaultInfo;
+  }
   if (!desktop) return;
   try { const st = await desktop.defaultStatus(); isDefaultReader = !!(st.supported && st.isDefault); if (!st.supported) return; }
   catch { return; }
@@ -315,7 +335,52 @@ async function refreshDefaultStatus() {
   $('#defaultHint').hidden = isDefaultReader;
 }
 document.querySelector('[data-act-default]')?.addEventListener('click', () => defaultReaderDialog());
+/** Android : guide en deux temps (libérer le réglage de l'autre application, puis choisir Atelier PDF). */
+async function makeTestPdf() {
+  const doc = await PDFLib.PDFDocument.create();
+  const pg = doc.addPage([420, 300]);
+  const f = await doc.embedFont(PDFLib.StandardFonts.HelveticaBold), r = await doc.embedFont(PDFLib.StandardFonts.Helvetica);
+  pg.drawText('Atelier PDF', { x: 40, y: 220, size: 26, font: f, color: PDFLib.rgb(0.14, 0.27, 0.79) });
+  pg.drawText('Ce document sert seulement a regler', { x: 40, y: 170, size: 14, font: r });
+  pg.drawText('le lecteur PDF par defaut.', { x: 40, y: 150, size: 14, font: r });
+  return doc.save();
+}
+function androidDefaultDialog() {
+  const body = h('div', { class: 'prose' });
+  const foot = h('div', { class: 'row', style: { justifyContent: 'flex-end', width: '100%', gap: '8px' } });
+  const choose = async () => {
+    try { await openTestPdf(await makeTestPdf()); m.close(); }
+    catch (e) { toast('Impossible d\'ouvrir le PDF d\'essai : ' + (e.message || e), { error: true }); }
+  };
+  const draw = () => {
+    const st = defaultInfo || {};
+    foot.replaceChildren();
+    if (st.isDefault) {
+      body.replaceChildren(h('p', {}, h('b', {}, '✓ Atelier PDF ouvre déjà vos PDF.')),
+        h('p', { class: 'help' }, 'Depuis Fichiers, Gmail, WhatsApp… un PDF touché s\'ouvre directement ici.'));
+      foot.append(h('button', { class: 'btn primary', onclick: () => m.close() }, 'Fermer'));
+    } else if (st.hasOther) {
+      body.replaceChildren(
+        h('p', {}, 'Vos PDF s\'ouvrent actuellement avec ', h('b', {}, st.label || 'une autre application'), '. Android ne permet pas de changer ce réglage à sa place : c\'est l\'affaire de deux étapes.'),
+        h('ol', {},
+          h('li', {}, 'Touchez ', h('b', {}, `Réglages de ${st.label || 'l\'application'}`), ', puis ', h('b', {}, 'Ouvrir par défaut'), ' (ou « Définir par défaut ») et ', h('b', {}, 'Effacer les préférences par défaut'), '.'),
+          h('li', {}, 'Revenez ici et touchez ', h('b', {}, 'Choisir Atelier PDF'), '.')));
+      foot.append(h('button', { class: 'btn outline', onclick: () => openAppSettings(st.package).catch(() => toast('Ouvrez Paramètres › Applications › ' + st.label + '.', { duration: 8000 })) }, `Réglages de ${st.label || 'l\'application'}`),
+        h('button', { class: 'btn primary', onclick: choose }, 'Choisir Atelier PDF'));
+    } else {
+      body.replaceChildren(
+        h('p', {}, 'Un PDF d\'essai va s\'ouvrir et Android vous demandera avec quelle application.'),
+        h('p', {}, 'Choisissez ', h('b', {}, 'Atelier PDF'), ', puis ', h('b', {}, 'Toujours'), '.'));
+      foot.append(h('button', { class: 'btn outline', onclick: () => m.close() }, 'Plus tard'), h('button', { class: 'btn primary', onclick: choose }, 'Choisir Atelier PDF'));
+    }
+  };
+  const m = modal({ title: 'Lecteur PDF par défaut', width: 520, body, foot: [foot], onClose: () => { defaultDialogRefresh = null; } });
+  defaultDialogRefresh = draw;
+  draw();
+  refreshDefaultStatus();
+}
 function defaultReaderDialog() {
+  if (isAndroidApp) return androidDefaultDialog();
   const m = modal({ title: 'Lecteur PDF par défaut', width: 520, body: h('div', { class: 'prose' },
     h('p', {}, isDefaultReader ? 'Atelier PDF ouvre déjà vos PDF par défaut.' : 'Windows ne permet pas à un logiciel de se choisir lui-même : le réglage se fait dans Windows, en un clic.'),
     h('p', {}, h('b', {}, 'Dans la fenêtre qui va s\'ouvrir : '), 'cliquez sur « Définir par défaut » en haut (Windows 11), ou sur la ligne « .pdf » puis choisissez Atelier PDF.'),

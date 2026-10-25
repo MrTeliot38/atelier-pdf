@@ -56,6 +56,14 @@
         </provider>
     </application>
 
+    <!-- Android 11+ : savoir quelle application ouvre actuellement les PDF (réglage « lecteur par défaut ») -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="application/pdf" />
+        </intent>
+    </queries>
+
     <!-- Permissions -->
     <!-- INTERNET : nécessaire au fonctionnement interne de la vue web (contenu servi localement) ;
          la politique de sécurité de la page interdit toute connexion vers l'extérieur. -->

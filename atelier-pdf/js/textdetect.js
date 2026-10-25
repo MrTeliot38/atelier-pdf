@@ -326,6 +326,23 @@ export async function sampleColors(page, rect) {
     }
     let bg = [255, 255, 255];
     if (counts.size) { const c = [...counts.values()].sort((a, b) => b[0] - a[0])[0]; bg = [c[1] / c[0], c[2] / c[0], c[3] / c[0]]; }
+    // texte dans un encadré à peine plus grand que lui : le pourtour tombe hors de l'encadré.
+    // Le fond est alors la couleur dominante À L'INTÉRIEUR (les lettres n'occupent qu'une partie de la zone).
+    const inner = new Map(); let nIn = 0;
+    for (let y = ring; y < H - ring; y++) for (let x = ring; x < W - ring; x++) {
+      const i = (y * W + x) * 4;
+      const k = (d[i] >> 3) << 10 | (d[i + 1] >> 3) << 5 | (d[i + 2] >> 3);
+      const c = inner.get(k) || [0, 0, 0, 0]; c[0]++; c[1] += d[i]; c[2] += d[i + 1]; c[3] += d[i + 2]; inner.set(k, c); nIn++;
+    }
+    if (inner.size) {
+      // couleurs voisines regroupées (bruit d'un scan)
+      const top = [...inner.values()].sort((a, b) => b[0] - a[0])[0];
+      const tc = [top[1] / top[0], top[2] / top[0], top[3] / top[0]];
+      let share = 0;
+      for (const c of inner.values()) { const m = [c[1] / c[0], c[2] / c[0], c[3] / c[0]]; if (Math.abs(m[0] - tc[0]) + Math.abs(m[1] - tc[1]) + Math.abs(m[2] - tc[2]) < 40) share += c[0]; }
+      const far = Math.abs(tc[0] - bg[0]) + Math.abs(tc[1] - bg[1]) + Math.abs(tc[2] - bg[2]) > 60;
+      if (far && share / nIn > 0.45) bg = tc;
+    }
     // encre : pixels intérieurs les plus éloignés du fond
     const ins = [];
     let maxD = 0;
