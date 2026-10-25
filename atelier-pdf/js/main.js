@@ -7,6 +7,7 @@ import { initInspector } from './inspector.js';
 import { openFiles, closeDocument, addImageAsset, imageToPage } from './docs.js';
 import { closeTab, cycle, openMergeDialog, anyDirty, tabCount } from './tabs.js';
 import { initPageImages } from './pageimages.js';
+import { initCtxBar, touchUI } from './ctxbar.js';
 import { openSignatureDialog } from './signature.js';
 import { downloadPdf, downloadFlattened, openPrintDialog, openImageDialog } from './export.js';
 import { savePdf, openShareDialog } from './share.js';
@@ -15,7 +16,7 @@ import { commit } from './core.js';
 import { openScanner, isScannerOpen } from './scanner.js';
 import { isAndroidApp, isTouch, saveBlob, printPdf, onIncomingFiles, initBackButton } from './platform.js';
 
-const VERSION = '1.6.0';
+const VERSION = '1.6.1';
 const desktop = window.atelierDesktop;
 if (desktop) document.body.classList.add('is-desktop');
 const isMobile = () => window.innerWidth < 860;
@@ -26,6 +27,7 @@ initTools();
 initPagesPanel();
 initInspector();
 initPageImages();
+initCtxBar();
 setTool('select');
 
 // premier lancement après une mise à jour
@@ -132,6 +134,8 @@ $('#toolstrip').addEventListener('click', e => {
   const b = e.target.closest('[data-tool]'); if (!b) return;
   const t = b.dataset.tool;
   if (t === 'image') { imageMode = 'object'; $('#imageInput').click(); return; }
+  // écran tactile : toucher à nouveau l'outil actif le referme (retour à la navigation)
+  if (t === state.tool && t !== 'select' && touchUI()) { select(null); setTool('select'); return; }
   setTool(t);
   if (t === 'sign') startSigning();
 });

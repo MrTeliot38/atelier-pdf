@@ -50,18 +50,22 @@ function clearAll() {
 
 /* ------------------------------------------------------------ zoom */
 export function setZoom(z, anchorEvent) {
-  z = clamp(Math.round(z * 100) / 100, 0.25, 4);
-  if (z === state.zoom) return;
-  const old = state.zoom;
   const rect = mat.getBoundingClientRect();
   const ay = anchorEvent ? anchorEvent.clientY - rect.top : mat.clientHeight / 2;
   const ax = anchorEvent ? anchorEvent.clientX - rect.left : mat.clientWidth / 2;
-  const docY = (mat.scrollTop + ay - 28) / old, docX = (mat.scrollLeft + ax) / old;
+  zoomAt(z, mat.scrollLeft + ax, mat.scrollTop + ay, ax, ay);
+}
+/** Change le zoom : le point (cx, cy) du contenu (zoom actuel) vient se placer en (vx, vy) dans la zone visible. */
+function zoomAt(z, cx, cy, vx, vy) {
+  z = clamp(Math.round(z * 100) / 100, 0.25, 4);
+  if (z === state.zoom) return;
+  const old = state.zoom;
+  const docY = (cy - 28) / old, docX = cx / old;
   state.zoom = z;
   for (const s of slots.values()) { layoutSlot(s); s.key = ''; }
   state.pages.forEach(p => { renderObjects(p.id); renderForms(p.id); });
-  mat.scrollTop = docY * z - ay + 28;
-  mat.scrollLeft = docX * z - ax;
+  mat.scrollTop = docY * z - vy + 28;
+  mat.scrollLeft = docX * z - vx;
   for (const id of near) queueRender(id);
   emit('zoom');
 }
@@ -76,21 +80,41 @@ export function fitWidth(initial) {
   else setZoom(z);
 }
 
+/**
+ * Zoom à deux doigts : pendant le geste, la page est simplement agrandie à l'écran (fluide, sans calcul) ;
+ * le document n'est redessiné net qu'au moment où les doigts se lèvent.
+ */
 function pinchZoom() {
-  const pts = new Map(); let startDist = 0, startZoom = 1;
-  mat.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') pts.set(e.pointerId, e); }, true);
-  mat.addEventListener('pointermove', e => {
-    if (!pts.has(e.pointerId)) return;
-    pts.set(e.pointerId, e);
-    if (pts.size === 2) {
-      const [a, b] = [...pts.values()];
-      const d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-      if (!startDist) { startDist = d; startZoom = state.zoom; return; }
-      if (Math.abs(d / startDist - 1) > 0.06) setZoom(startZoom * d / startDist, { clientX: (a.clientX + b.clientX) / 2, clientY: (a.clientY + b.clientY) / 2 });
-    }
-  }, true);
-  const end = e => { pts.delete(e.pointerId); if (pts.size < 2) startDist = 0; };
-  mat.addEventListener('pointerup', end, true); mat.addEventListener('pointercancel', end, true);
+  let g = null;
+  const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+  const mid = (a, b) => ({ x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 });
+  mat.addEventListener('touchstart', e => {
+    if (e.touches.length !== 2 || !state.pages.length) return;
+    const [a, b] = e.touches, m = mid(a, b), r = mat.getBoundingClientRect();
+    g = { d0: Math.max(10, dist(a, b)), m0: m, k: 1, dx: 0, dy: 0, r, ox: mat.scrollLeft + m.x - r.left, oy: mat.scrollTop + m.y - r.top };
+    pagesEl.style.transformOrigin = `${g.ox}px ${g.oy}px`;
+    pagesEl.style.willChange = 'transform';
+    document.body.classList.add('pinching');
+    emit('pinch-start');
+  }, { passive: true });
+  mat.addEventListener('touchmove', e => {
+    if (!g) return;
+    if (e.touches.length < 2) return;
+    e.preventDefault();
+    const [a, b] = e.touches, m = mid(a, b);
+    g.k = clamp(dist(a, b) / g.d0, 0.25 / state.zoom, 4 / state.zoom);
+    g.dx = m.x - g.m0.x; g.dy = m.y - g.m0.y;
+    pagesEl.style.transform = `translate(${g.dx}px, ${g.dy}px) scale(${g.k})`;
+  }, { passive: false });
+  const end = e => {
+    if (!g || e.touches.length >= 2) return;
+    const { k, dx, dy, ox, oy, m0, r } = g; g = null;
+    pagesEl.style.transform = ''; pagesEl.style.transformOrigin = ''; pagesEl.style.willChange = '';
+    document.body.classList.remove('pinching');
+    if (Math.abs(k - 1) > 0.02) zoomAt(state.zoom * k, ox, oy, m0.x + dx - r.left, m0.y + dy - r.top);
+    else { mat.scrollLeft -= dx; mat.scrollTop -= dy; }
+  };
+  mat.addEventListener('touchend', end); mat.addEventListener('touchcancel', end);
 }
 
 /* ------------------------------------------------------------ pages */
@@ -153,7 +177,11 @@ async function renderCanvas(id) {
   if (!p.src) { s.canvas.width = 1; s.canvas.height = 1; s.key = key; return; }
   const src = state.sources.get(p.src);
   const pdfPage = await src.pdf.getPage(p.index + 1);
-  const vp = pdfPage.getViewport({ scale: state.zoom * dpr });
+  // au-delà de quelques millions de pixels, un téléphone n'affiche plus rien : on plafonne (l'image est étirée)
+  const vp1 = pdfPage.getViewport({ scale: 1 });
+  const maxPx = (matchMedia('(pointer: coarse)').matches ? 10e6 : 24e6);
+  const scale = Math.min(state.zoom * dpr, Math.sqrt(maxPx / (vp1.width * vp1.height)));
+  const vp = pdfPage.getViewport({ scale });
   const c = document.createElement('canvas');
   c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
   c.className = 'page-canvas';
@@ -162,7 +190,7 @@ async function renderCanvas(id) {
   await s.task.promise;
   s.task = null;
   if (!slots.has(id)) return;
-  s.canvas.replaceWith(c); s.canvas = c; s.key = key; s.scale = state.zoom * dpr;
+  s.canvas.replaceWith(c); s.canvas = c; s.key = key; s.scale = scale;
   emit('page-rendered', id);
 }
 function releaseCanvas(id) {

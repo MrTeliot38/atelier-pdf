@@ -1,10 +1,10 @@
 // Atelier PDF — fonctionnement hors connexion
 // Changez VERSION à chaque mise en ligne d'une nouvelle version.
-const VERSION = 'atelier-pdf-1.6.0';
+const VERSION = 'atelier-pdf-1.6.1';
 const CORE = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/main.js', 'js/core.js', 'js/ui.js', 'js/docs.js', 'js/viewer.js', 'js/tools.js', 'js/textdetect.js',
-  'js/inspector.js', 'js/signature.js', 'js/export.js', 'js/pagesPanel.js', 'js/fontnames.js', 'js/systemfonts.js', 'js/fontmatch.js', 'js/share.js', 'js/tabs.js', 'js/pageimages.js', 'js/pageregions.js', 'js/platform.js', 'js/scanner.js', 'js/scancore.js', 'js/scanworker.js',
+  'js/inspector.js', 'js/signature.js', 'js/export.js', 'js/pagesPanel.js', 'js/fontnames.js', 'js/systemfonts.js', 'js/fontmatch.js', 'js/share.js', 'js/tabs.js', 'js/pageimages.js', 'js/pageregions.js', 'js/platform.js', 'js/scanner.js', 'js/scancore.js', 'js/scanworker.js', 'js/ctxbar.js',
   'vendor/pdfjs/pdf.min.mjs', 'vendor/pdfjs/pdf.worker.min.mjs',
   'vendor/pdf-lib.min.js', 'vendor/fontkit.umd.min.js', 'vendor/jszip.min.js', 'vendor/Sortable.min.js',
   'fonts/atkinson-hyperlegible-latin-400-normal.woff2', 'fonts/atkinson-hyperlegible-latin-700-normal.woff2',

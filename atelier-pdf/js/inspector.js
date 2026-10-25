@@ -17,6 +17,8 @@ const HL = ['#ffe14d', '#8ef0a0', '#8fd3ff', '#ffa6d2'];
 
 export function initInspector() {
   on('selection', () => render());
+  // toucher le document replie le panneau sur téléphone
+  $('#mat').addEventListener('pointerdown', () => { if (window.innerWidth < 860 && !ins.hidden) ins.classList.add('peek'); });
   on('tool', () => render());
   on('restored', () => render(true));
   on('object-updated', () => render(true));
@@ -40,6 +42,7 @@ function render(force) {
   const sel = state.selected && findObject(state.selected);
   const k = sel ? 'o:' + sel.obj.id : 't:' + state.tool;
   if (!force && k === key) return;
+  const sameKey = k === key;
   key = k;
   let content = null;
   if (sel) content = objectPanel(sel.obj, sel.page);
@@ -48,9 +51,11 @@ function render(force) {
   const closer = h('button', { class: 'btn icon small insp-close', type: 'button', title: 'Masquer ce panneau', 'aria-label': 'Masquer ce panneau', onclick: () => { ins.hidden = true; } }, svgIcon(ICONS.close));
   ins.replaceChildren(closer, ...[].concat(content));
   ins.hidden = false;
-  // téléphone : sans élément sélectionné, le panneau reste replié (une ligne) pour laisser voir le document
+  // téléphone : le panneau est replié (une ligne) pour laisser voir le document ; on le déplie en touchant son titre
   const mobile = window.innerWidth < 860;
-  ins.classList.toggle('peek', mobile && !sel);
+  // (replié à chaque nouvel élément ou outil ; reste ouvert si on règle l'élément déjà déplié)
+  if (!sameKey) ins.classList.toggle('peek', mobile);
+  else if (!mobile) ins.classList.remove('peek');
   const title = ins.querySelector('h2');
   if (mobile && title) {
     title.setAttribute('role', 'button'); title.tabIndex = 0;

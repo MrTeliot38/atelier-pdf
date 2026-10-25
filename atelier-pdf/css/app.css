@@ -22,6 +22,11 @@
   --shadow-page: 0 1px 2px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.28);
   --shadow-pop: 0 10px 30px rgba(20,30,26,.22), 0 2px 6px rgba(20,30,26,.12);
   --topbar-h: 56px;
+  /* zones réservées par le système (barre d'état, encoche, barre de gestes) — application Android et téléphones */
+  --sat: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --sab: max(env(safe-area-inset-bottom, 0px), var(--safe-area-inset-bottom, 0px));
+  --sal: max(env(safe-area-inset-left, 0px), var(--safe-area-inset-left, 0px));
+  --sar: max(env(safe-area-inset-right, 0px), var(--safe-area-inset-right, 0px));
   --strip-h: 48px;
   --sidebar-w: 196px;
   --inspector-w: 272px;
@@ -51,8 +56,9 @@ html, body { height: 100%; margin: 0; }
 body {
   font-family: var(--font); font-size: 15px; line-height: 1.45; color: var(--ink);
   background: var(--mat); overflow: hidden;
-  display: grid; grid-template-rows: var(--topbar-h) auto auto minmax(0,1fr) auto; grid-template-columns: minmax(0,1fr);
-  grid-template-areas: "top" "tabs" "strip" "work" "status"; height: 100dvh;
+  display: grid; grid-template-rows: calc(var(--topbar-h) + var(--sat)) auto auto auto minmax(0,1fr) auto; grid-template-columns: minmax(0,1fr);
+  padding-left: var(--sal); padding-right: var(--sar);
+  grid-template-areas: "top" "tabs" "strip" "ctx" "work" "status"; height: 100dvh;
 }
 .topbar { grid-area: top; } .tabbar { grid-area: tabs; } .toolstrip { grid-area: strip; } .workspace { grid-area: work; } .statusbar { grid-area: status; }
 [hidden] { display: none !important; }
@@ -63,7 +69,7 @@ body.is-empty .only-doc { display: none !important; }
 
 /* ---------- Top bar ---------- */
 .topbar {
-  display: flex; align-items: center; gap: 6px; padding: 0 10px 0 14px;
+  display: flex; align-items: center; gap: 6px; padding: var(--sat) 10px 0 14px;
   background: var(--chrome); border-bottom: 1px solid var(--line); position: relative; z-index: 20; min-width: 0;
 }
 .brand { display: flex; align-items: center; gap: 8px; margin-right: 6px; }
@@ -97,7 +103,7 @@ body.is-empty .only-doc { display: none !important; }
   position: absolute; z-index: 50; min-width: 220px; padding: 6px; background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius-m); box-shadow: var(--shadow-pop); display: flex; flex-direction: column;
 }
-#mainMenu { top: calc(var(--topbar-h) - 6px); right: 10px; }
+#mainMenu { top: calc(var(--topbar-h) + var(--sat) - 6px); right: 10px; }
 .menu button { text-align: left; padding: 9px 12px; border: 0; background: none; border-radius: var(--radius-s); cursor: pointer; }
 .menu button:hover, .menu button:focus-visible { background: var(--chrome-2); }
 
@@ -269,7 +275,7 @@ body.sidebar-hidden .sidebar { display: none; }
 .check-row input { width: 17px; height: 17px; accent-color: var(--accent); }
 
 /* ---------- Status bar ---------- */
-.statusbar { display: flex; justify-content: space-between; gap: 12px; padding: 4px 14px; font-size: 12.5px; background: var(--chrome); border-top: 1px solid var(--line); color: var(--muted); }
+.statusbar { display: flex; justify-content: space-between; gap: 12px; padding: 4px 14px calc(4px + var(--sab)); font-size: 12.5px; background: var(--chrome); border-top: 1px solid var(--line); color: var(--muted); }
 #hint { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- Welcome ---------- */
@@ -366,13 +372,13 @@ kbd { font: inherit; font-size: 12.5px; padding: 1px 6px; border: 1px solid var(
 }
 @media (max-width: 860px) {
   :root { --topbar-h: 52px; }
-  body { grid-template-rows: var(--topbar-h) auto minmax(0,1fr) auto; grid-template-areas: "top" "tabs" "work" "strip"; }
+  body { grid-template-rows: calc(var(--topbar-h) + var(--sat)) auto auto minmax(0,1fr) auto; grid-template-areas: "top" "tabs" "ctx" "work" "strip"; }
   .brand-name { display: none; }
   .docname { display: none; }
   .zoom { display: none !important; }
   #btnDownload .lbl { display: none; }
   #btnDownload { width: 40px; padding: 0; }
-  .toolstrip { border-top: 1px solid var(--line); border-bottom: 0; padding-bottom: env(safe-area-inset-bottom); height: calc(58px + env(safe-area-inset-bottom)); }
+  .toolstrip { border-top: 1px solid var(--line); border-bottom: 0; padding-bottom: var(--sab); height: calc(58px + var(--sab)); }
   .tool { flex-direction: column; gap: 1px; height: 52px; border-radius: 10px; padding: 4px 10px; font-size: 11.5px; }
   .statusbar { display: none; }
   .sidebar { position: absolute; left: 0; top: 0; bottom: 0; box-shadow: var(--shadow-pop); }
@@ -490,22 +496,22 @@ body.tool-select .pimg.region:hover { outline-color: var(--accent); background: 
 
 /* ---------- Scanner de documents ---------- */
 body.scanning { overflow: hidden; }
-.scanner { position: fixed; inset: 0; z-index: 95; background: var(--chrome); color: var(--ink); display: flex; flex-direction: column; }
+.scanner { position: fixed; inset: 0; z-index: 95; padding-left: var(--sal); padding-right: var(--sar); background: var(--chrome); color: var(--ink); display: flex; flex-direction: column; }
 .scan-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.scan-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; padding-top: calc(8px + env(safe-area-inset-top)); min-height: 56px; }
+.scan-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; padding-top: calc(8px + var(--sat)); min-height: 56px; }
 .scan-head h2 { flex: 1; margin: 0; font-size: 18px; text-align: center; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .scan-head-r { display: flex; gap: 4px; min-width: 44px; justify-content: flex-end; }
 .scan-iconbtn { width: 44px; height: 44px; border-radius: 50%; border: 0; background: transparent; color: inherit; display: grid; place-items: center; cursor: pointer; flex: none; }
 .scan-iconbtn:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
 .scan-iconbtn svg { width: 24px; height: 24px; }
 .scan-iconbtn[aria-pressed="true"] { background: var(--marker); color: #000; }
-.scan-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; padding-bottom: calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+.scan-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; padding-bottom: calc(12px + var(--sab)); border-top: 1px solid var(--line); }
 .scan-foot .btn.big { flex: 1; max-width: 360px; margin-left: auto; }
 .scan-foot .btn svg, .scan-act svg { flex: none; }
 
 /* prise de vue */
 .scan-camera { background: #0d1210; color: #fff; }
-.scan-camera .scan-foot { border-top: 0; justify-content: space-between; padding-top: 16px; padding-bottom: calc(22px + env(safe-area-inset-bottom)); }
+.scan-camera .scan-foot { border-top: 0; justify-content: space-between; padding-top: 16px; padding-bottom: calc(22px + var(--sab)); }
 .scan-stage { flex: 1; min-height: 0; position: relative; overflow: hidden; }
 .scan-video, .scan-overlay { position: absolute; inset: 0; width: 100%; height: 100%; }
 .scan-video { object-fit: contain; background: #000; }
@@ -622,8 +628,8 @@ body.scanning { overflow: hidden; }
   .tab { min-width: 96px; }
   .tab-merge .lbl { display: none; }
   .welcome .lead { font-size: 15px; }
-  .toasts { bottom: calc(76px + env(safe-area-inset-bottom)); width: calc(100vw - 24px); }
-  body.scanning .toasts { bottom: calc(120px + env(safe-area-inset-bottom)); }
+  .toasts { bottom: calc(76px + var(--sab)); width: calc(100vw - 24px); }
+  body.scanning .toasts { bottom: calc(120px + var(--sab)); }
 }
 @media (max-width: 600px) {
   .mobile-only { display: block; }
@@ -636,11 +642,37 @@ body.scanning { overflow: hidden; }
   .menu button { padding: 12px 14px; }
   .modal { border-radius: 14px 14px 0 0; align-self: end; max-height: calc(100dvh - 24px); }
   .backdrop { padding: 12px 0 0; place-items: end center; }
-  .modal-foot { padding-bottom: calc(16px + env(safe-area-inset-bottom)); flex-wrap: wrap; }
+  .modal-foot { padding-bottom: calc(16px + var(--sab)); flex-wrap: wrap; }
   .picker-grid { grid-template-columns: repeat(auto-fill, minmax(86px, 1fr)); }
   .opts { grid-template-columns: 1fr; gap: 6px; }
 }
 @media (max-width: 400px) {
   #btnRedo { display: none; }
   .tool { padding: 4px 8px; font-size: 11px; }
+}
+
+/* ---------- Barre d'action contextuelle et zoom (écrans tactiles) ---------- */
+.ctxbar {
+  grid-area: ctx; z-index: 14; display: flex; align-items: center; gap: 8px; min-height: 54px;
+  padding: 7px 10px 7px 16px; background: var(--accent-soft); color: var(--ink); border-bottom: 1px solid var(--line);
+  animation: ctx-in .16s ease-out;
+}
+.ctx-label { flex: 1; }
+@keyframes ctx-in { from { opacity: 0; } }
+.ctx-label { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; margin-right: 4px; }
+.ctx-label b { font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ctx-label small { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ctxbar .btn { height: 40px; border-radius: 20px; flex: none; }
+.ctxbar .btn.primary { padding: 0 16px; }
+.ctxbar .ctx-close, .ctxbar .ctx-del { width: 40px; padding: 0; border: 1px solid var(--line); background: var(--surface); }
+.ctxbar .ctx-del { color: var(--danger); }
+.zoomfab { position: absolute; right: 12px; bottom: 70px; z-index: 9; display: none; flex-direction: column; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow-pop); overflow: hidden; }
+.zoomfab button { width: 46px; height: 44px; border: 0; background: none; display: grid; place-items: center; cursor: pointer; color: var(--ink); padding: 0; }
+.zoomfab button:active { background: var(--chrome-2); }
+.zoomfab .zoomfab-val { height: 30px; font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--muted); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+body.is-empty .zoomfab, body.is-empty .ctxbar { display: none !important; }
+.mat { touch-action: pan-x pan-y; }
+body.tool-mask .page, body.tool-highlight .page { touch-action: none; }
+@media (max-width: 860px), (pointer: coarse) {
+  .zoomfab { display: flex; }
 }

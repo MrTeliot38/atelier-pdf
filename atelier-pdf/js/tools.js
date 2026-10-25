@@ -32,6 +32,7 @@ export function setHint(t) { const el = $('#hint'); if (el) el.textContent = t; 
 export function initTools() {
   pagesEl.addEventListener('pointerdown', onDown);
   pagesEl.addEventListener('dblclick', e => {
+    if (Date.now() - lastDoubleTap < 700) return;
     const el = e.target.closest('.obj.text'); if (el) return startEditing(el.dataset.id);
     // double-clic sur l'image d'une page entière : elle devient sélectionnable
     const pim = e.target.closest('.pimg');
@@ -115,7 +116,31 @@ export async function ocrPage(page) {
 }
 
 /* ------------------------------------------------ pointeur */
+// Écran tactile : un doigt qui glisse fait défiler le document ; seul un « toucher » (doigt posé puis levé
+// presque au même endroit) ajoute un texte, une coche ou une signature.
+let lastTap = null, lastDoubleTap = 0;
+function waitTap(e, fn) {
+  const x0 = e.clientX, y0 = e.clientY, id = e.pointerId;
+  let moved = false;
+  const mv = ev => { if (ev.pointerId === id && Math.hypot(ev.clientX - x0, ev.clientY - y0) > 12) moved = true; };
+  const done = ev => {
+    if (ev.pointerId !== id) return;
+    window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', done); window.removeEventListener('pointercancel', done);
+    if (ev.type === 'pointerup' && !moved && !document.body.classList.contains('pinching')) fn(ev);
+  };
+  window.addEventListener('pointermove', mv); window.addEventListener('pointerup', done); window.addEventListener('pointercancel', done);
+}
+/** Vrai si ce toucher suit de près un autre au même endroit (double toucher). */
+function isDoubleTap(ev, key) {
+  const now = Date.now();
+  const dbl = lastTap && lastTap.key === key && now - lastTap.t < 380 && Math.hypot(ev.clientX - lastTap.x, ev.clientY - lastTap.y) < 30;
+  lastTap = dbl ? null : { key, t: now, x: ev.clientX, y: ev.clientY };
+  if (dbl) lastDoubleTap = now;
+  return dbl;
+}
+
 function onDown(e) {
+  const touch = e.pointerType === 'touch';
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   const pageId = pageOfElement(e.target); if (!pageId) return;
   const page = pageById(pageId);
@@ -129,7 +154,10 @@ function onDown(e) {
   if (handle && objEl) { e.preventDefault(); return startResize(e, page, objEl.dataset.id, handle.dataset.h); }
   if (objEl && !(state.tool === 'sign' && state.pendingSignature)) { e.preventDefault(); return startMove(e, page, objEl.dataset.id); }
   const tb = e.target.closest('.tblock');
-  if (tb && state.tool === 'edit') { e.preventDefault(); return editBlock(page, tb._block, tb); }
+  if (tb && state.tool === 'edit') {
+    if (touch) return waitTap(e, () => editBlock(page, tb._block, tb));
+    e.preventDefault(); return editBlock(page, tb._block, tb);
+  }
   const pim = e.target.closest('.pimg');
   if (pim && state.tool === 'select') {
     e.preventDefault();
@@ -142,7 +170,14 @@ function onDown(e) {
       if (state.selected) select(null);
       return;
     }
-    if (!full) return liftAndDrag(e, page, pim);
+    if (!full && !touch) return liftAndDrag(e, page, pim);
+    if (touch) {
+      // au doigt, glisser fait défiler : une image du document se prend par un double toucher
+      return waitTap(e, ev => {
+        if (isDoubleTap(ev, 'pim:' + pageId)) liftAndDrag({ clientX: ev.clientX, clientY: ev.clientY }, page, pim, true);
+        else if (state.selected) select(null);
+      });
+    }
     const x0 = e.clientX, y0 = e.clientY;
     let started = false;
     const mv = ev => {
@@ -160,6 +195,15 @@ function onDown(e) {
     return;
   }
   const p = pagePoint(e, pageId);
+  if (touch && (state.tool === 'text' || state.tool === 'mark' || state.tool === 'sign')) {
+    return waitTap(e, () => {
+      if (state.tool === 'text') addText(page, p);
+      else if (state.tool === 'mark') addMark(page, p);
+      else if (state.pendingSignature) placeSignature(page, p);
+      else emit('open-signature', {});
+    });
+  }
+  if (touch && state.tool === 'select') return waitTap(e, () => { if (state.selected) select(null); });
   switch (state.tool) {
     case 'text': e.preventDefault(); return addText(page, p);
     case 'mark': e.preventDefault(); return addMark(page, p);
@@ -219,10 +263,11 @@ function startMove(e, page, id) {
     o.x = clamp(ox + dx, -o.w * 0.8, page.w - o.w * 0.2);
     o.y = clamp(oy + dy, -o.h * 0.8, page.h - o.h * 0.2);
     if (el) { el.style.left = o.x * state.zoom + 'px'; el.style.top = o.y * state.zoom + 'px'; }
-  }, () => {
+  }, ev => {
     if (moved) { commit(); renderObjects(page.id); emit('object-moved', id); return; }
     // outils Texte et Modifier : un clic écrit ; outil Sélection : un clic sélectionne, un double-clic écrit
     if (o.type === 'text' && (state.tool === 'text' || state.tool === 'edit')) startEditing(id);
+    else if (o.type === 'text' && e.pointerType === 'touch' && isDoubleTap(ev, 'obj:' + id)) startEditing(id);
   });
 }
 
