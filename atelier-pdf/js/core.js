@@ -88,6 +88,8 @@ export function fmtPages(n) { return n + (n > 1 ? ' pages' : ' page'); }
 export function baseName(name) { return (name || 'document').replace(/\.(pdf|png|jpe?g|webp)$/i, ''); }
 
 export function downloadBlob(blob, filename) {
+  // application Android : Android demande où enregistrer ; renvoie une promesse (true si enregistré)
+  if (window.__atelierSave) return window.__atelierSave(blob, filename);
   const url = URL.createObjectURL(blob);
   const a = h('a', { href: url, download: filename });
   document.body.append(a); a.click(); a.remove();

@@ -212,7 +212,7 @@ export async function findRegions(page) {
     }
     status.textContent = 'Repérage des images…';
     const n = (await detectRegions(page)).length;
-    toast(n ? `${n} image${n > 1 ? 's' : ''} repérée${n > 1 ? 's' : ''} : survolez la page, puis cliquez sur une image pour la déplacer ou la supprimer.` : 'Aucune image repérée sur cette page.', { duration: 7000 });
+    toast(n ? `${n} image${n > 1 ? 's' : ''} repérée${n > 1 ? 's' : ''} : ${matchMedia('(pointer: coarse)').matches ? 'touchez une image pour la déplacer ou la supprimer.' : 'survolez la page, puis cliquez sur une image pour la déplacer ou la supprimer.'}` : 'Aucune image repérée sur cette page.', { duration: 7000 });
   } catch (e) { console.error(e); toast('Le repérage des images a échoué.', { error: true }); }
   if (s?.imgBanner) { delete s.imgBanner.dataset.busy; s.imgBanner.classList.remove('show'); }
   renderImageLayer(page.id);

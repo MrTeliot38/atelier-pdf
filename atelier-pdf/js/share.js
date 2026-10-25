@@ -2,6 +2,7 @@
 import { state, emit, h, toast, svgIcon, downloadBlob } from './core.js';
 import { modal } from './ui.js';
 import { buildPdf, buildFlatPdf, downloadPdf } from './export.js';
+import { canShareFiles, shareBlob, isAndroidApp } from './platform.js';
 
 const desktop = window.atelierDesktop;
 const baseOf = p => p.split(/[\\/]/).pop().replace(/\.pdf$/i, '');
@@ -42,10 +43,6 @@ const ICON = {
   download: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/>',
 };
 
-function canShareFiles() {
-  try { return !!navigator.canShare && navigator.canShare({ files: [new File(['x'], 'x.pdf', { type: 'application/pdf' })] }); }
-  catch { return false; }
-}
 
 export function openShareDialog() {
   let flat = false;
@@ -70,8 +67,7 @@ export function openShareDialog() {
   };
 
   const systemShare = async () => {
-    const file = new File([await bytes()], fileName(), { type: 'application/pdf' });
-    await navigator.share({ files: [file], title: subject(), text: `Document « ${subject()} »` });
+    await shareBlob(new Blob([await bytes()], { type: 'application/pdf' }), fileName(), subject());
   };
 
   const actions = [];
@@ -97,6 +93,9 @@ export function openShareDialog() {
     })]);
   } else {
     if (sys) actions.push(['share', 'Partager…', 'E-mail, WhatsApp, Messages et les autres applications de l\'appareil.', run('Préparation…', systemShare)]);
+    if (isAndroidApp) actions.push(['download', 'Enregistrer sur le téléphone', 'Choisissez le dossier : Téléchargements, Documents, Drive…', run('Préparation…', async () => {
+      if (await downloadBlob(new Blob([await bytes()], { type: 'application/pdf' }), fileName())) toast('PDF enregistré.');
+    })]);
     actions.push(['mail', 'E-mail', sys ? 'Choisissez votre messagerie dans la liste.' : 'Télécharge le PDF et ouvre un nouveau message : joignez-y le fichier.', run('Préparation…', async () => {
       if (sys) return systemShare();
       downloadBlob(new Blob([await bytes()], { type: 'application/pdf' }), fileName());

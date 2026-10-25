@@ -181,7 +181,7 @@ export function rotatePages(ids, delta) {
 export async function deletePages(ids) {
   if (ids.length >= state.pages.length) { toast('Un document doit garder au moins une page.', { error: true }); return; }
   if (ids.length > 1) {
-    const ok = await confirmDialog({ title: 'Supprimer des pages', text: `Supprimer ${fmtPages(ids.length)} ? Vous pourrez annuler avec Ctrl+Z.`, ok: 'Supprimer', danger: true });
+    const ok = await confirmDialog({ title: 'Supprimer des pages', text: `Supprimer ${fmtPages(ids.length)} ? Vous pourrez annuler avec le bouton Annuler.`, ok: 'Supprimer', danger: true });
     if (!ok) return;
   }
   state.pages = state.pages.filter(p => !ids.includes(p.id));

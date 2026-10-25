@@ -18,6 +18,7 @@ import android.print.PrintManager;
 import android.provider.OpenableColumns;
 import android.util.Base64;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResult;
 import androidx.core.content.FileProvider;
 
@@ -54,6 +55,19 @@ public class AtelierNativePlugin extends Plugin {
     public void load() {
         Activity a = getActivity();
         if (a != null) readIntent(a.getIntent());
+        // bouton Retour : la page décide (fermer une fenêtre, désélectionner, demander avant de quitter…)
+        getActivity().runOnUiThread(() -> getActivity().getOnBackPressedDispatcher().addCallback(getActivity(), new OnBackPressedCallback(true) {
+            @Override
+            public void handleOnBackPressed() {
+                notifyListeners("backButton", new JSObject(), false);
+            }
+        }));
+    }
+
+    @PluginMethod
+    public void exitApp(PluginCall call) {
+        call.resolve();
+        getActivity().runOnUiThread(() -> getActivity().finish());
     }
 
     @Override
@@ -87,11 +101,12 @@ public class AtelierNativePlugin extends Plugin {
                 JSObject f = readUri(u);
                 if (f == null) continue;
                 synchronized (pending) { pending.add(f); }
-                notifyListeners("fileOpened", f, false);
             } catch (Exception e) {
                 // fichier illisible : ignoré
             }
         }
+        // la page vient chercher les fichiers elle-même (getPendingFiles) : pas de doublon
+        notifyListeners("filesPending", new JSObject(), true);
     }
 
     private JSObject readUri(Uri uri) throws Exception {

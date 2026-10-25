@@ -12,8 +12,10 @@ import { downloadPdf, downloadFlattened, openPrintDialog, openImageDialog } from
 import { savePdf, openShareDialog } from './share.js';
 import { modal, confirmDialog, isModalOpen } from './ui.js';
 import { commit } from './core.js';
+import { openScanner, isScannerOpen } from './scanner.js';
+import { isAndroidApp, isTouch, saveBlob, printPdf, onIncomingFiles, initBackButton } from './platform.js';
 
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const desktop = window.atelierDesktop;
 if (desktop) document.body.classList.add('is-desktop');
 const isMobile = () => window.innerWidth < 860;
@@ -38,6 +40,13 @@ const fileInput = $('#fileInput');
 const askOpen = () => fileInput.click();
 $('#btnOpen').onclick = askOpen;
 $('#btnOpenWelcome').onclick = askOpen;
+
+/* ------------------------------------------------ scanner */
+const scanNew = (files) => openScanner({ mode: 'new', files, onEdit: file => handleFiles([file]) });
+const scanAppend = () => openScanner({ mode: 'append', onAppend: file => openFiles([file], { mode: 'append', at: insertionIndex() }) });
+$('#btnScanWelcome').onclick = () => scanNew();
+// sur téléphone et tablette, le scanner est mis en avant
+if (isTouch) { $('.drop-hint').hidden = true; $('#btnScanWelcome').className = 'btn primary big'; $('#btnOpenWelcome').className = 'btn outline big'; $('#btnScanWelcome').after($('#btnOpenWelcome')); }
 fileInput.onchange = () => { const f = [...fileInput.files]; fileInput.value = ''; if (f.length) handleFiles(f); };
 
 /** Chaque PDF s'ouvre dans son propre onglet ; plusieurs images choisies ensemble forment un seul document. */
@@ -98,6 +107,7 @@ addMenu.addEventListener('click', e => {
   if (b.dataset.add === 'blank') insertBlankPage();
   if (b.dataset.add === 'pdf') $('#pdfInsertInput').click();
   if (b.dataset.add === 'image') { imageMode = 'page'; $('#imageInput').click(); }
+  if (b.dataset.add === 'scan') scanAppend();
 });
 $('#pdfInsertInput').onchange = async e => {
   const f = [...e.target.files]; e.target.value = ''; if (!f.length) return;
@@ -171,6 +181,9 @@ mainMenu.addEventListener('click', async e => {
   mainMenu.hidden = true;
   const act = b.dataset.act;
   if (act === 'install') installApp();
+  if (act === 'scan') scanNew();
+  if (act === 'print') openPrintDialog();
+  if (act === 'images') openImageDialog();
   if (act === 'flat') downloadFlattened();
   if (act === 'saveas') savePdf(true);
   if (act === 'newwin') desktop?.newWindow();
@@ -252,8 +265,39 @@ if (desktop) {
   for (const el of $$('.desktop-only')) el.hidden = false;
   refreshDefaultStatus();
   window.addEventListener('focus', refreshDefaultStatus);
-} else {
+} else if (!isAndroidApp) {
   window.addEventListener('beforeunload', e => { if (anyDirty()) { e.preventDefault(); e.returnValue = ''; } });
+}
+
+/* ------------------------------------------------ application Android */
+if (isAndroidApp) {
+  window.__atelierSave = async (blob, name) => {
+    try { return await saveBlob(blob, name); }
+    catch (e) { console.error(e); toast('L\'enregistrement n\'a pas abouti.', { error: true }); return false; }
+  };
+  window.__atelierPrint = (bytes, name) => printPdf(bytes, name).catch(e => toast('Impression impossible : ' + (e.message || e), { error: true }));
+  $('#btnDownload .lbl').textContent = 'Enregistrer';
+  $('#btnDownload').title = 'Enregistrer le PDF sur le téléphone';
+  $('[data-act="flat"]').textContent = 'Enregistrer un PDF aplati (sans texte caché)…';
+  $('.drop-hint').hidden = true;
+  // PDF ouverts depuis une autre application ; photos partagées vers Atelier PDF → scanner
+  onIncomingFiles(files => {
+    const pdfs = files.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+    const imgs = files.filter(f => !pdfs.includes(f));
+    if (pdfs.length) handleFiles(pdfs);
+    if (imgs.length && !isScannerOpen()) scanNew(imgs);
+  });
+  // bouton Retour : fermer ce qui est ouvert, puis demander avant de quitter avec des modifications
+  initBackButton(async () => {
+    if (isModalOpen()) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true; }
+    const openMenu = $$('.menu').find(m => !m.hidden);
+    if (openMenu) { openMenu.hidden = true; return true; }
+    if (document.body.classList.contains('sidebar-open')) { document.body.classList.remove('sidebar-open'); return true; }
+    if (state.editing || state.selected) { select(null); return true; }
+    if (state.tool !== 'select') { setTool('select'); return true; }
+    if (anyDirty()) return !(await confirmDialog({ title: 'Quitter Atelier PDF ?', text: 'Des modifications n\'ont pas été enregistrées.', ok: 'Quitter sans enregistrer', danger: true }));
+    return false;
+  });
 }
 
 /* ------------------------------------------------ lecteur PDF par défaut (Windows) */
@@ -296,7 +340,7 @@ function showAbout() {
   modal({ title: 'À propos d\'Atelier PDF', width: 520, body: h('div', { class: 'prose' },
     h('p', {}, 'Outil libre et gratuit pour retoucher, remplir, signer et réorganiser des PDF.'),
     h('p', {}, 'Tout se passe dans votre navigateur : vos documents ne sont jamais envoyés sur un serveur. Une fois installé, l\'outil fonctionne aussi sans connexion.'),
-    h('p', { class: 'help' }, `Version ${VERSION}${desktop ? ' pour Windows' : ''}. Construit avec pdf.js et Tesseract.js (Apache 2.0), pdf-lib, JSZip et SortableJS (MIT), police Atkinson Hyperlegible (OFL).`)) });
+    h('p', { class: 'help' }, `Version ${VERSION}${desktop ? ' pour Windows' : isAndroidApp ? ' pour Android' : ''}. Construit avec pdf.js et Tesseract.js (Apache 2.0), pdf-lib, JSZip et SortableJS (MIT), police Atkinson Hyperlegible (OFL).`)) });
 }
 
 /* ------------------------------------------------ application installable */
@@ -308,7 +352,7 @@ async function installApp() {
   await installEvt.userChoice; installEvt = null;
   mainMenu.querySelector('[data-act="install"]').hidden = true;
 }
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+if ('serviceWorker' in navigator && location.protocol.startsWith('http') && !isAndroidApp) {
   navigator.serviceWorker.register('sw.js').then(reg => {
     reg.addEventListener('updatefound', () => {
       const w = reg.installing;

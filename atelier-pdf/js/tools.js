@@ -105,7 +105,7 @@ export async function ocrPage(page) {
       status.textContent = label;
       emit('ocr-progress', { page: page.id, progress: m.progress, label });
     });
-    toast('Texte reconnu : cliquez sur un bloc pour le modifier.');
+    toast(matchMedia('(pointer: coarse)').matches ? 'Texte reconnu : touchez un bloc pour le modifier.' : 'Texte reconnu : cliquez sur un bloc pour le modifier.');
   } catch (e) {
     console.error(e);
     toast('La reconnaissance du texte a échoué. Vérifiez votre connexion pour le premier chargement, puis réessayez.', { error: true, duration: 7000 });
@@ -153,7 +153,7 @@ function onDown(e) {
       cleanup();
       if (started) return;
       if (state.selected) select(null);
-      else if (!fullHintShown) { fullHintShown = true; toast('Image de la page entière : faites-la glisser pour la déplacer, ou double-cliquez pour la sélectionner.', { duration: 6000 }); }
+      else if (!fullHintShown) { fullHintShown = true; toast(matchMedia('(pointer: coarse)').matches ? 'Image de la page entière : faites-la glisser pour la déplacer, ou touchez-la deux fois pour la sélectionner.' : 'Image de la page entière : faites-la glisser pour la déplacer, ou double-cliquez pour la sélectionner.', { duration: 6000 }); }
     };
     const cleanup = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); };
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
@@ -300,7 +300,7 @@ export function armSignature(asset) {
   if (state.tool !== 'sign') setTool('sign'); else { document.body.classList.add('sign-armed'); }
   document.body.classList.add('sign-armed');
   setHint('Cliquez à l\'endroit où placer la signature. Échap pour annuler.');
-  toast('Cliquez sur le document à l\'endroit où signer.');
+  toast(matchMedia('(pointer: coarse)').matches ? 'Touchez le document à l\'endroit où signer.' : 'Cliquez sur le document à l\'endroit où signer.');
 }
 function placeSignature(page, p) {
   const ps = state.pendingSignature;

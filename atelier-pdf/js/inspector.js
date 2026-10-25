@@ -8,6 +8,9 @@ import { currentPageObj, renderObjects } from './viewer.js';
 import { findRegions } from './pageimages.js';
 
 const ins = $('#inspector');
+const touch = matchMedia('(pointer: coarse)').matches;
+/** Texte adapté : souris et clavier, ou écran tactile. */
+const T = (mouse, finger) => touch ? finger : mouse;
 let key = '';
 const INK = ['#111111', '#ffffff', '#c2362f', '#2446c9', '#2f7d4f', '#e8772e'];
 const HL = ['#ffe14d', '#8ef0a0', '#8fd3ff', '#ffa6d2'];
@@ -45,6 +48,14 @@ function render(force) {
   const closer = h('button', { class: 'btn icon small insp-close', type: 'button', title: 'Masquer ce panneau', 'aria-label': 'Masquer ce panneau', onclick: () => { ins.hidden = true; } }, svgIcon(ICONS.close));
   ins.replaceChildren(closer, ...[].concat(content));
   ins.hidden = false;
+  // téléphone : sans élément sélectionné, le panneau reste replié (une ligne) pour laisser voir le document
+  const mobile = window.innerWidth < 860;
+  ins.classList.toggle('peek', mobile && !sel);
+  const title = ins.querySelector('h2');
+  if (mobile && title) {
+    title.setAttribute('role', 'button'); title.tabIndex = 0;
+    title.onclick = () => ins.classList.toggle('peek');
+  }
 }
 
 /* ------------------------------------------------ briques */
@@ -192,7 +203,7 @@ function objectPanel(o, page) {
   } else if (o.type === 'image') {
     const sig = o.kind === 'signature', lifted = o.origin === 'lift';
     out.push(h('h2', {}, sig ? 'Signature' : lifted ? 'Image du document' : 'Image'));
-    out.push(h('p', { class: 'help' }, 'Faites glisser pour déplacer, tirez un coin pour agrandir ou réduire. Suppr pour l\'effacer.'));
+    out.push(h('p', { class: 'help' }, T('Faites glisser pour déplacer, tirez un coin pour agrandir ou réduire. Suppr pour l\'effacer.', 'Faites glisser pour déplacer, tirez un coin pour agrandir ou réduire.')));
     if (lifted) out.push(h('p', { class: 'help' }, 'Son emplacement d\'origine est recouvert par la couleur du fond.'));
     if (!sig) {
       actions.append(actionBtn(ICONS.rotr, 'Pivoter d\'un quart de tour', () => rotateImage(o)));
@@ -287,9 +298,9 @@ function toolPanel(tool) {
   if (tool === 'select') {
     return [
       h('h2', {}, 'Sélection'),
-      h('p', { class: 'help' }, 'Cliquez sur un élément ajouté (texte, signature, coche…) ou sur une image du document pour le sélectionner, puis faites-le glisser pour le déplacer.'),
-      h('p', { class: 'help' }, 'Double-cliquez sur un texte pour l\'écrire. Pour l\'image d\'une page entière (scan, photo), faites-la glisser ou double-cliquez dessus.'),
-      h('p', { class: 'help' }, 'Suppr efface l\'élément sélectionné ; Ctrl+Z ou le bouton Annuler revient en arrière.'),
+      h('p', { class: 'help' }, T('Cliquez sur un élément ajouté (texte, signature, coche…) ou sur une image du document pour le sélectionner, puis faites-le glisser pour le déplacer.', 'Touchez un élément ajouté (texte, signature, coche…) ou une image du document pour le sélectionner, puis faites-le glisser pour le déplacer.')),
+      h('p', { class: 'help' }, T('Double-cliquez sur un texte pour l\'écrire. Pour l\'image d\'une page entière (scan, photo), faites-la glisser ou double-cliquez dessus.', 'Touchez deux fois un texte pour l\'écrire. Deux doigts pour zoomer.')),
+      h('p', { class: 'help' }, T('Suppr efface l\'élément sélectionné ; Ctrl+Z ou le bouton Annuler revient en arrière.', 'Le bouton Annuler, en haut, revient en arrière.')),
       h('div', { class: 'insp-actions' },
         actionBtn(ICONS.scan, 'Repérer les images de cette page', () => { const p = currentPageObj(); if (p) findRegions(p); }),
         h('p', { class: 'help' }, 'Logos, dessins, pictogrammes, QR codes… même dans un tract enregistré comme une seule image.')),
@@ -298,7 +309,7 @@ function toolPanel(tool) {
   if (tool === 'edit') {
     return [
       h('h2', {}, 'Modifier le texte'),
-      h('p', { class: 'help' }, 'Cliquez sur un bloc entouré pour le corriger. Le nouveau texte reprend la taille, la couleur et une police proche de l\'original.'),
+      h('p', { class: 'help' }, T('Cliquez', 'Touchez') + ' un bloc entouré pour le corriger. Le nouveau texte reprend la taille, la couleur et une police proche de l\'original.'),
       field('Sélectionner par', seg([{ v: 'paragraph', l: 'Paragraphe' }, { v: 'line', l: 'Ligne' }], state.textMode, v => { state.textMode = v; refreshTextLayers(); }, 'Mode de sélection')),
       field('Texte non reconnu ?',
         h('p', { class: 'help' }, 'Pour un scan, une photo ou un texte vectorisé (export Canva, logo…), lancez la lecture automatique de la page affichée.'),
@@ -310,7 +321,7 @@ function toolPanel(tool) {
     const d = state.textDefaults;
     return [
       h('h2', {}, 'Ajouter du texte'),
-      h('p', { class: 'help' }, 'Cliquez à l\'endroit voulu et écrivez. Idéal pour remplir un formulaire qui n\'a pas de champs.'),
+      h('p', { class: 'help' }, T('Cliquez', 'Touchez') + ' l\'endroit voulu et écrivez. Idéal pour remplir un formulaire qui n\'a pas de champs.'),
       field('Police', fontSelect(d.font, v => { d.font = v; render(true); })),
       field('Taille', sizeInput(d.size, v => d.size = v)),
       field('Couleur', swatches(INK, d.color, c => { d.color = c; render(true); })),
@@ -320,7 +331,7 @@ function toolPanel(tool) {
   if (tool === 'mark') {
     return [
       h('h2', {}, 'Cocher'),
-      h('p', { class: 'help' }, 'Cliquez sur chaque case à cocher. L\'outil reste actif tant que vous en avez besoin.'),
+      h('p', { class: 'help' }, T('Cliquez sur', 'Touchez') + ' chaque case à cocher. L\'outil reste actif tant que vous en avez besoin.'),
       field('Symbole', markSeg(state.markKind, v => state.markKind = v)),
       field('Taille', sizeInput(state.markSize || 12, v => state.markSize = v, { min: 4, max: 60, step: 1 })),
       field('Couleur', swatches(INK, state.markColor || '#111111', c => { state.markColor = c; render(true); })),
@@ -329,7 +340,7 @@ function toolPanel(tool) {
   if (tool === 'sign') {
     return [
       h('h2', {}, 'Signer'),
-      h('p', { class: 'help' }, state.pendingSignature ? 'Cliquez sur le document à l\'endroit où signer.' : 'Tracez, saisissez ou importez votre signature, puis placez-la sur le document.'),
+      h('p', { class: 'help' }, state.pendingSignature ? T('Cliquez sur le document à l\'endroit où signer.', 'Touchez le document à l\'endroit où signer.') : 'Tracez, saisissez ou importez votre signature, puis placez-la sur le document.'),
       h('button', { class: 'btn primary', type: 'button', onclick: () => emit('open-signature', {}) }, state.pendingSignature ? 'Changer de signature' : 'Créer ou choisir une signature'),
       h('p', { class: 'help' }, 'Il s\'agit d\'une signature visuelle, comme une signature scannée. Elle convient à la plupart des documents internes.'),
     ];

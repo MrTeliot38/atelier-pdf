@@ -186,9 +186,10 @@ export async function downloadPdf(pageIds = null, suffix = '-modifié') {
   const t = toast('Préparation du PDF…', { duration: 60000 });
   try {
     const bytes = await buildPdf(pageIds);
-    downloadBlob(new Blob([bytes], { type: 'application/pdf' }), fileName(suffix));
     t.remove();
-    toast(window.atelierDesktop ? 'PDF enregistré.' : 'PDF enregistré dans vos téléchargements.');
+    const saved = await downloadBlob(new Blob([bytes], { type: 'application/pdf' }), fileName(suffix));
+    if (saved === false) return;
+    toast(window.atelierDesktop || window.__atelierSave ? 'PDF enregistré.' : 'PDF enregistré dans vos téléchargements.');
     state.dirty = false;
   } catch (e) {
     console.error(e); t.remove();
@@ -229,8 +230,9 @@ export async function downloadFlattened() {
       t.remove(); if (p) toast('PDF aplati enregistré : le texte n\'y est plus sélectionnable.');
       return;
     }
-    downloadBlob(new Blob([bytes], { type: 'application/pdf' }), fileName('-aplati'));
-    t.remove(); toast('PDF aplati enregistré : le texte n\'y est plus sélectionnable.');
+    t.remove();
+    if (await downloadBlob(new Blob([bytes], { type: 'application/pdf' }), fileName('-aplati')) === false) return;
+    toast('PDF aplati enregistré : le texte n\'y est plus sélectionnable.');
   } catch (e) { console.error(e); t.remove(); toast('L\'export a échoué : ' + e.message, { error: true }); }
 }
 
@@ -293,7 +295,10 @@ async function printViaImages(bytes) {
 }
 
 async function printBytes(bytes) {
-  if (window.atelierDesktop) return printViaImages(bytes);
+  // application Android : impression par Android (imprimantes du réseau, « Enregistrer en PDF »…)
+  if (window.__atelierPrint) return window.__atelierPrint(bytes, fileName(''));
+  // Windows et navigateurs Android (qui n'affichent pas les PDF dans la page) : impression d'images des pages
+  if (window.atelierDesktop || /Android/i.test(navigator.userAgent)) return printViaImages(bytes);
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
   const frame = h('iframe', { style: { position: 'fixed', right: '0', bottom: '0', width: '1px', height: '1px', border: '0', opacity: '0' }, title: 'impression' });
   document.body.append(frame);
@@ -365,12 +370,14 @@ async function exportImages(nums, fmt, dpi, q, progress) {
     progress(0.2 + 0.75 * i / pdf.numPages);
   }
   task.destroy();
-  if (files.length === 1) downloadBlob(files[0].blob, files[0].name);
+  let saved;
+  if (files.length === 1) saved = await downloadBlob(files[0].blob, files[0].name);
   else {
     const zip = new window.JSZip();
     for (const f of files) zip.file(f.name, f.blob);
-    downloadBlob(await zip.generateAsync({ type: 'blob' }), `${state.docName || 'document'}-images.zip`);
+    saved = await downloadBlob(await zip.generateAsync({ type: 'blob' }), `${state.docName || 'document'}-images.zip`);
   }
   progress(1);
+  if (saved === false) return;
   toast(files.length === 1 ? 'Image enregistrée.' : `${fmtPages(files.length)} exportées dans une archive .zip.`);
 }

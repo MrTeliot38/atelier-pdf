@@ -48,6 +48,9 @@
   </div>
   <button class="btn icon" id="btnMenu" title="Plus d'options" aria-haspopup="menu"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/></svg></button>
   <div class="menu" id="mainMenu" role="menu" hidden>
+    <button role="menuitem" data-act="scan">Scanner un document…</button>
+    <button role="menuitem" data-act="print" class="only-doc mobile-only">Imprimer…</button>
+    <button role="menuitem" data-act="images" class="only-doc mobile-only">Exporter en images (JPG, PNG)…</button>
     <button role="menuitem" data-act="install" hidden>Installer l'application</button>
     <button role="menuitem" data-act="merge" class="only-doc">Fusionner des PDF…</button>
     <button role="menuitem" data-act="saveas" class="only-doc desktop-only" hidden>Enregistrer sous…</button>
@@ -82,6 +85,7 @@
         <button role="menuitem" data-add="blank">Page blanche</button>
         <button role="menuitem" data-add="pdf">Pages d'un autre PDF…</button>
         <button role="menuitem" data-add="image">Photo ou image…</button>
+        <button role="menuitem" data-add="scan">Scanner des pages…</button>
       </div>
     </div>
     <div class="selbar" id="selBar" hidden>
@@ -120,7 +124,10 @@
       </svg>
       <h1>Retouchez vos PDF sans tout refaire</h1>
       <p class="lead">Corrigez un mot dans un tract, remplissez un formulaire, signez, réorganisez les pages, imprimez seulement ce qu'il faut.</p>
-      <button class="btn primary big" id="btnOpenWelcome">Ouvrir un PDF ou une image</button>
+      <div class="welcome-actions">
+        <button class="btn primary big" id="btnOpenWelcome"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Ouvrir un PDF ou une image</button>
+        <button class="btn outline big" id="btnScanWelcome"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>Scanner un document</button>
+      </div>
       <p class="drop-hint">ou déposez le fichier ici</p>
       <p class="default-hint desktop-only" id="defaultHint" hidden><button class="linklike" type="button" data-act-default>Ouvrir mes PDF avec Atelier PDF par défaut</button></p>
       <p class="privacy"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Vos fichiers restent sur cet appareil : rien n'est envoyé sur internet.</p>
