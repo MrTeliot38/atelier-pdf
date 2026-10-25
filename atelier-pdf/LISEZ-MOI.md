@@ -14,6 +14,7 @@ Tout le traitement se fait sur l'appareil de la personne : aucun document n'est 
 - **Images dans une page « tout image »** (tract exporté en image, scan, photo) : l'outil repère automatiquement les logos, illustrations, pictogrammes et QR codes contenus dans la page (bouton « Repérer les images » si besoin, après lecture du texte). Chacun peut alors être déplacé, agrandi ou supprimé séparément ; son fond est rendu transparent.
 - **Onglets** : chaque PDF ouvert s'affiche dans son propre onglet (Ctrl+Tab pour passer de l'un à l'autre, Ctrl+W pour fermer). Chaque onglet garde son historique d'annulation.
 - **Fusionner** : bouton « Fusionner » de la barre d'onglets (ou menu ⋮) pour réunir plusieurs PDF en un seul, dans l'ordre voulu, au début, à la fin ou après la page affichée.
+- **Scanner un document** : photographiez une ou plusieurs feuilles avec le téléphone (ou partez de photos existantes). Bords repérés automatiquement, perspective redressée, papier blanchi ; recadrage, rotation et ordre des pages modifiables ; PDF en qualité faible, moyenne ou élevée, puis partage, enregistrement ou modification.
 - **Masquer, surligner, insérer une image.**
 - **Pages** : réordonner par glisser-déposer, pivoter, dupliquer, supprimer, ajouter une page blanche, les pages d'un autre PDF ou une photo ; télécharger une sélection de pages seule.
 - **Imprimer** en choisissant les pages (clic sur les miniatures ou saisie « 1-3, 6 »).
@@ -26,7 +27,7 @@ Tout le traitement se fait sur l'appareil de la personne : aucun document n'est 
 - Une image du document déplacée ou supprimée laisse à sa place un fond de la couleur environnante (blanc pour une photo pleine page). Sur un fond dégradé ou photographique, ce rectangle peut se voir.
 - Une correction de texte recouvre l'ancien texte : il reste présent dans le fichier (recherche, copier-coller). Pour un document confidentiel, utilisez le PDF aplati.
 - Si la police d'origine n'est pas installée sur l'ordinateur, l'outil prend la plus proche (Arial/Helvetica, Times, Courier) ; vous pouvez aussi importer le fichier de police (.ttf ou .otf).
-- Une application Windows à installer existe aussi (dossier `atelier-pdf-desktop`).
+- Une application Windows (dossier `atelier-pdf-desktop`) et une application Android (dossier `atelier-pdf-android`) existent aussi.
 - La signature est une signature visuelle (équivalent d'une signature scannée), pas une signature électronique certifiée.
 - Après réorganisation des pages, les champs de formulaire sont figés dans le PDF final (ils restent modifiables si l'ordre des pages n'a pas changé).
 

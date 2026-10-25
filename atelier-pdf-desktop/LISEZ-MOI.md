@@ -11,6 +11,7 @@ Ce dossier fabrique l'installateur Windows (`Atelier-PDF-Setup-x.y.z.exe`) à pa
 - **Enregistrer** (Ctrl+S) réécrit le fichier d'origine ; **Enregistrer sous** (Ctrl+Maj+S) en fait une copie.
 - **Partager** : e-mail avec le PDF en pièce jointe (Outlook classique, Thunderbird… ; avec les autres messageries, le PDF est copié pour être collé), WhatsApp (le PDF est copié et WhatsApp s'ouvre : choisir la conversation puis Ctrl+V), ou simple copie du fichier.
 - Confirmation avant de fermer si des modifications ne sont pas enregistrées.
+- **Scanner** à partir de photos de documents (prises avec un téléphone) : redressées et nettoyées comme un scan. La webcam n'est pas utilisée.
 - Fonctionne entièrement sans connexion.
 
 ## Sécurité

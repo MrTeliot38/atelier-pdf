@@ -2,7 +2,7 @@
 // en faire un PDF (qualité faible, moyenne ou élevée), puis le partager.
 import { h, toast, svgIcon, ICONS, PDFLib, downloadBlob } from './core.js';
 import { detectQuad, QUALITIES, pdfPageSize } from './scancore.js';
-import { isAndroidApp, saveBlob, shareBlob, canShareFiles, pushBack } from './platform.js';
+import { isAndroidApp, isDesktopApp, saveBlob, shareBlob, canShareFiles, pushBack } from './platform.js';
 import { confirmDialog } from './ui.js';
 
 const I = {
@@ -166,7 +166,8 @@ async function showCamera() {
   updateCamCounter();
 
   try {
-    if (!navigator.mediaDevices?.getUserMedia) throw new Error('nocam');
+    // application Windows : pas d'accès à la webcam (choix de sécurité) ; on part de photos existantes
+    if (!navigator.mediaDevices?.getUserMedia || isDesktopApp) throw new Error('nocam');
     S.stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 4096 }, height: { ideal: 3072 } } });
     if (!S || S.view !== 'camera') { S?.stream?.getTracks().forEach(t => t.stop()); return; }
     video.srcObject = S.stream;
@@ -189,8 +190,8 @@ async function showCamera() {
     if (!S || S.view !== 'camera') return;
     stage.classList.add('nocam');
     hint.replaceChildren(
-      h('b', {}, e.name === 'NotAllowedError' ? 'L\'accès à l\'appareil photo a été refusé.' : 'L\'appareil photo n\'est pas disponible ici.'),
-      h('span', {}, e.name === 'NotAllowedError' ? 'Autorisez-le dans les réglages, ou utilisez les boutons ci-dessous.' : 'Vous pouvez prendre la photo avec l\'appareil photo du téléphone ou choisir des photos existantes.'),
+      h('b', {}, isDesktopApp ? 'Partez des photos de vos documents.' : e.name === 'NotAllowedError' ? 'L\'accès à l\'appareil photo a été refusé.' : 'L\'appareil photo n\'est pas disponible ici.'),
+      h('span', {}, isDesktopApp ? 'Photos prises avec un téléphone, envoyées par e-mail ou WhatsApp : elles seront redressées et nettoyées comme un scan.' : e.name === 'NotAllowedError' ? 'Autorisez-le dans les réglages, ou utilisez les boutons ci-dessous.' : 'Vous pouvez prendre la photo avec l\'appareil photo du téléphone ou choisir des photos existantes.'),
       h('span', { class: 'row', style: { justifyContent: 'center', marginTop: '10px' } },
         btn('Prendre une photo', () => capture.click(), 'primary', I.camera), btn('Choisir des photos', () => gallery.click(), 'outline', I.gallery)));
     shutter.onclick = () => capture.click();
