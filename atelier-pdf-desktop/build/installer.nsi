@@ -5,7 +5,7 @@
 Unicode true
 !define APPNAME "Atelier PDF"
 !ifndef VERSION
-  !define VERSION "1.6.3"
+  !define VERSION "1.6.4"
 !endif
 !define EXE "Atelier PDF.exe"
 !define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\AtelierPDF"

@@ -1,6 +1,6 @@
 // Atelier PDF — fonctionnement hors connexion
 // Changez VERSION à chaque mise en ligne d'une nouvelle version.
-const VERSION = 'atelier-pdf-1.6.3';
+const VERSION = 'atelier-pdf-1.6.4';
 const CORE = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/main.js', 'js/core.js', 'js/ui.js', 'js/docs.js', 'js/viewer.js', 'js/tools.js', 'js/textdetect.js',

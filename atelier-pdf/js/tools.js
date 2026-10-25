@@ -4,7 +4,7 @@ import { getSlot, pagePoint, renderObjects, slots, pagesEl, mat, pageOfElement, 
 import { getBlocks, runOcr, sampleColors } from './textdetect.js';
 import { matchSystemFont, loadSystemFamily } from './systemfonts.js';
 import { guessFont, MATCH_THRESHOLD } from './fontmatch.js';
-import { liftImage, renderImageLayer } from './pageimages.js';
+import { liftImage, renderImageLayer, findRegions } from './pageimages.js';
 import { textErasePatch } from './inpaint.js';
 
 const TOOL_HINTS = {
@@ -180,6 +180,7 @@ function onDown(e) {
       return waitTap(e, ev => {
         if (isDoubleTap(ev, 'pim:' + pageId)) liftAndDrag({ clientX: ev.clientX, clientY: ev.clientY }, page, pim, true);
         else if (state.selected) select(null);
+        else fullPageHint(page);
       });
     }
     const x0 = e.clientX, y0 = e.clientY;
@@ -192,7 +193,7 @@ function onDown(e) {
       cleanup();
       if (started) return;
       if (state.selected) select(null);
-      else if (!fullHintShown) { fullHintShown = true; toast(matchMedia('(pointer: coarse)').matches ? 'Image de la page entière : faites-la glisser pour la déplacer, ou touchez-la deux fois pour la sélectionner.' : 'Image de la page entière : faites-la glisser pour la déplacer, ou double-cliquez pour la sélectionner.', { duration: 6000 }); }
+      else fullPageHint(page);
     };
     const cleanup = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up); };
     window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
@@ -221,6 +222,14 @@ function onDown(e) {
 }
 
 let lifting = false, fullHintShown = false;
+/** Une seule fois : comment prendre l'image de la page entière, et proposition de repérer les images qu'elle contient. */
+function fullPageHint(page) {
+  if (fullHintShown) return;
+  fullHintShown = true;
+  const touch = matchMedia('(pointer: coarse)').matches;
+  toast(touch ? 'Cette page est une seule image. Pour déplacer un logo ou une illustration, repérez d\'abord les images.' : 'Cette page est une seule image (scan, export). Pour déplacer un logo ou une illustration, repérez d\'abord les images.',
+    { duration: 9000, action: { label: 'Repérer les images', fn: () => findRegions(page) } });
+}
 async function liftAndDrag(e, page, pim, selectOnly = false) {
   if (lifting) return;
   lifting = true;

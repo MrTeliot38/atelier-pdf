@@ -174,7 +174,9 @@ export async function renderImageLayer(pageId) {
     if (tokens.get(pageId) !== token || state.tool !== 'select') return;
   }
   if (regions) list = [...list, ...regions];
-  showRegionBanner(s, page, wanted && !regions && !textKnown);
+  // le bandeau n'apparaît plus de lui-même à l'ouverture : le repérage se lance depuis le panneau Sélection
+  // ou depuis l'invitation qui s'affiche quand on touche l'image de la page ; il ne sert qu'à suivre la progression
+  showRegionBanner(s, page, false);
   const z = state.zoom;
   const covers = s.page.objects.filter(o => o.cover).map(o => o.cover);
   const frag = document.createDocumentFragment();

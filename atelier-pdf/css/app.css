@@ -680,3 +680,4 @@ body.tool-mask .page, body.tool-highlight .page { touch-action: none; }
 /* ---------- Saisie au doigt : place libérée pour le clavier ---------- */
 body.typing .toolstrip, body.typing .inspector, body.typing .zoomfab, body.typing .tabbar { display: none !important; }
 body.typing .pages { padding-bottom: 70vh; }
+.insp-actions .btn { white-space: normal; height: auto; min-height: 36px; padding-top: 6px; padding-bottom: 6px; text-align: left; line-height: 1.3; }
