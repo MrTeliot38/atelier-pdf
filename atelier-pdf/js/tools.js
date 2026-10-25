@@ -5,6 +5,7 @@ import { getBlocks, runOcr, sampleColors } from './textdetect.js';
 import { matchSystemFont, loadSystemFamily } from './systemfonts.js';
 import { guessFont, MATCH_THRESHOLD } from './fontmatch.js';
 import { liftImage, renderImageLayer } from './pageimages.js';
+import { textErasePatch } from './inpaint.js';
 
 const TOOL_HINTS = {
   select: 'Cliquez sur une image du document ou un élément ajouté pour le sélectionner et le déplacer ; double-cliquez sur un texte pour l\'écrire. Suppr pour l\'effacer, Ctrl+Z pour annuler.',
@@ -118,7 +119,10 @@ export async function ocrPage(page) {
 /* ------------------------------------------------ pointeur */
 // Écran tactile : un doigt qui glisse fait défiler le document ; seul un « toucher » (doigt posé puis levé
 // presque au même endroit) ajoute un texte, une coche ou une signature.
-let lastTap = null, lastDoubleTap = 0;
+let lastTap = null, lastDoubleTap = 0, swallowTouchEnd = 0;
+// après un toucher traité, le navigateur simule des clics de souris qui retireraient le curseur
+// de la zone de texte qu'on vient d'ouvrir : on les supprime
+window.addEventListener('touchend', ev => { if (swallowTouchEnd && Date.now() - swallowTouchEnd < 400) { swallowTouchEnd = 0; if (ev.cancelable) ev.preventDefault(); } }, { capture: true, passive: false });
 function waitTap(e, fn) {
   const x0 = e.clientX, y0 = e.clientY, id = e.pointerId;
   let moved = false;
@@ -126,7 +130,7 @@ function waitTap(e, fn) {
   const done = ev => {
     if (ev.pointerId !== id) return;
     window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', done); window.removeEventListener('pointercancel', done);
-    if (ev.type === 'pointerup' && !moved && !document.body.classList.contains('pinching')) fn(ev);
+    if (ev.type === 'pointerup' && !moved && !document.body.classList.contains('pinching')) { swallowTouchEnd = Date.now(); fn(ev); }
   };
   window.addEventListener('pointermove', mv); window.addEventListener('pointerup', done); window.addEventListener('pointercancel', done);
 }
@@ -396,6 +400,11 @@ async function editBlock(page, b, el) {
 async function doEditBlock(page, b) {
   const r = { x: b.x, y: b.top, w: b.w, h: b.bottom - b.top };
   const [colors, sysFont] = await Promise.all([sampleColors(page, r), !b.ocr && STD_FONTS[b.font] ? matchSystemFont(b.pdfName) : null]);
+  // l'ancien texte est effacé en conservant le fond (couleur, dégradé, photo) — calculé pendant la recherche de police
+  // un peu plus haut que les lettres : les accents des majuscules (É, À…) dépassent souvent du cadre lu
+  const up = Math.max(1.5, Math.min(b.size * 0.22, 6));
+  const coverRect = { x: b.x - 1.5, y: b.top - up, w: b.w + 3, h: b.bottom - b.top + 1.5 + up };
+  const patchP = textErasePatch(page, coverRect, colors.fg, colors.bg);
   // police inconnue (scan, photo, ou police absente de l'ordinateur) : reconnaissance visuelle, sinon Arial
   let font = sysFont || b.font, bold = b.bold, italic = b.italic, guesses;
   const pdfBase = (b.pdfName || '').replace(/^[A-Z]{6}\+/, '').replace(/[^a-z]/gi, '');
@@ -422,12 +431,13 @@ async function doEditBlock(page, b) {
     const extra = b.w * 0.03 + 2;
     x = b.x; w = b.w + extra;
   }
+  const patch = await patchP;
   const o = {
     id: uid(), type: 'text', origin: 'edit', orig: b.text, pdfName: b.pdfName || undefined,
     x, y: b.base0 - b.size * ASC, w, h: b.bottom - b.top,
     text: b.text, size: Math.round(b.size * 10) / 10, font, bold, italic, fontGuesses: guesses,
     color: colors.fg, align: b.align, lineHeight: Math.round(b.lineHeight * 100) / 100,
-    cover: { x: b.x - 1.5, y: b.top - 1.5, w: b.w + 3, h: b.bottom - b.top + 3, color: colors.bg },
+    cover: patch ? { ...patch, color: colors.bg } : { ...coverRect, color: colors.bg },
   };
   // la zone cliquable couvre tout l'emplacement d'origine, même si le nouveau texte est plus court
   o.minH = b.bottom + 1.5 - o.y;

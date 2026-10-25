@@ -16,7 +16,7 @@ import { commit } from './core.js';
 import { openScanner, isScannerOpen } from './scanner.js';
 import { isAndroidApp, isTouch, saveBlob, printPdf, onIncomingFiles, initBackButton } from './platform.js';
 
-const VERSION = '1.6.1';
+const VERSION = '1.6.2';
 const desktop = window.atelierDesktop;
 if (desktop) document.body.classList.add('is-desktop');
 const isMobile = () => window.innerWidth < 860;

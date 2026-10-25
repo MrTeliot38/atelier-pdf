@@ -192,8 +192,8 @@ body.tool-edit .obj.is-edited-mark::before { opacity: 1; }
 .obj .handle[data-h="e"] { right: -9px; top: calc(50% - 6px); cursor: ew-resize; border-radius: 3px; height: 16px; top: calc(50% - 8px); width: 8px; right: -7px; }
 .obj .handle[data-h="w"] { left: -7px; top: calc(50% - 8px); cursor: ew-resize; border-radius: 3px; height: 16px; width: 8px; }
 .obj textarea.editor {
-  position: absolute; left: -3px; top: -3px; border: 0; outline: 2px solid var(--accent); background: rgba(255,255,255,.96); resize: none;
-  padding: 3px; margin: 0; overflow: hidden; white-space: pre-wrap; overflow-wrap: break-word; color: #000; border-radius: 2px;
+  position: absolute; left: -3px; top: -3px; border: 0; outline: 2px solid var(--accent); background: transparent; resize: none;
+  padding: 3px; margin: 0; overflow: hidden; white-space: pre-wrap; overflow-wrap: break-word; color: #000; border-radius: 2px; caret-color: var(--accent);
 }
 .ghost-rect { position: absolute; border: 1.5px dashed var(--accent); background: rgba(36,70,201,.08); pointer-events: none; z-index: 8; }
 
@@ -676,3 +676,7 @@ body.tool-mask .page, body.tool-highlight .page { touch-action: none; }
 @media (max-width: 860px), (pointer: coarse) {
   .zoomfab { display: flex; }
 }
+
+/* ---------- Saisie au doigt : place libérée pour le clavier ---------- */
+body.typing .toolstrip, body.typing .inspector, body.typing .zoomfab, body.typing .tabbar { display: none !important; }
+body.typing .pages { padding-bottom: 70vh; }

@@ -144,7 +144,10 @@ async function drawObjects(out, pg, p, view, fontCache, imgCache) {
   const M = mul(inv(V), F);
   pg.pushOperators(pushGraphicsState(), concatTransformationMatrix(...M));
   const L = (r) => ({ x: r.x, y: H - r.y - r.h, width: r.w, height: r.h });
-  for (const o of p.objects) if (o.cover) pg.drawRectangle({ ...L(o.cover), color: pdfColor(o.cover.color), borderWidth: 0 });
+  for (const o of p.objects) if (o.cover) {
+    if (o.cover.img && state.assets.has(o.cover.img)) pg.drawImage(await getImage(out, o.cover.img, imgCache), L(o.cover));
+    else pg.drawRectangle({ ...L(o.cover), color: pdfColor(o.cover.color), borderWidth: 0 });
+  }
   for (const o of p.objects) {
     if (o.type === 'text') {
       const font = await getFont(out, o, fontCache);

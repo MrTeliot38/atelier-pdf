@@ -254,7 +254,12 @@ export function renderObjects(pageId) {
   const frag = document.createDocumentFragment();
   const box = (el, r) => Object.assign(el.style, { left: r.x * z + 'px', top: r.y * z + 'px', width: r.w * z + 'px', height: r.h * z + 'px' });
   for (const o of p.objects) if (o.cover) {
-    const c = h('div', { class: 'obj cover' }); box(c, o.cover); c.style.background = o.cover.color; frag.append(c);
+    const c = h('div', { class: 'obj cover' }); box(c, o.cover);
+    const patch = o.cover.img && state.assets.get(o.cover.img);
+    // fond d'origine reconstitué (sans les lettres) ou, à défaut, couleur unie
+    if (patch) { c.style.background = `${o.cover.color} url("${patch.dataUrl}") 0 0 / 100% 100% no-repeat`; }
+    else c.style.background = o.cover.color;
+    frag.append(c);
   }
   for (const o of p.objects) {
     if (o.type === 'erase') continue; // image du document supprimée : seul son recouvrement reste

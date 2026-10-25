@@ -25,7 +25,7 @@ Tout le traitement se fait sur l'appareil de la personne : aucun document n'est 
 ## Bon à savoir
 
 - Une image du document déplacée ou supprimée laisse à sa place un fond de la couleur environnante (blanc pour une photo pleine page). Sur un fond dégradé ou photographique, ce rectangle peut se voir.
-- Une correction de texte recouvre l'ancien texte : il reste présent dans le fichier (recherche, copier-coller). Pour un document confidentiel, utilisez le PDF aplati.
+- Une correction de texte efface les lettres d'origine en reconstituant le fond qui les entoure (couleur, dégradé, bandeau, photo) : le fond n'est pas remplacé par un aplat. L'ancien texte reste toutefois présent dans le fichier (recherche, copier-coller) ; pour un document confidentiel, utilisez le PDF aplati.
 - Si la police d'origine n'est pas installée sur l'ordinateur, l'outil prend la plus proche (Arial/Helvetica, Times, Courier) ; vous pouvez aussi importer le fichier de police (.ttf ou .otf).
 - Une application Windows (dossier `atelier-pdf-desktop`) et une application Android (dossier `atelier-pdf-android`) existent aussi.
 - La signature est une signature visuelle (équivalent d'une signature scannée), pas une signature électronique certifiée.

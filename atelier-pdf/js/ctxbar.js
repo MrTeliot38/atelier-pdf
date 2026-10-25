@@ -56,6 +56,19 @@ export function initCtxBar() {
     bar.replaceChildren(...kids);
     bar.hidden = !kids.length;
   };
+  // saisie au doigt : le clavier prend la moitié de l'écran ; on libère la place (barre d'outils, réglages)
+  // et on fait défiler pour garder la ligne en cours bien visible au-dessus du clavier
+  let typing = false;
+  const syncTyping = () => {
+    const now = !!state.editing && touchUI();
+    document.body.classList.toggle('typing', now);
+    if (now && !typing) [60, 350, 700].forEach(t => setTimeout(keepEditorVisible, t));
+    typing = now;
+  };
+  on('selection', syncTyping);
+  window.visualViewport?.addEventListener('resize', () => { if (typing) keepEditorVisible(); });
+  window.addEventListener('resize', () => { if (typing) setTimeout(keepEditorVisible, 50); });
+  on('text-input', () => { if (typing) keepEditorVisible(true); });
   on('selection', render); on('tool', render); on('doc-opened', render); on('doc-closed', render); on('doc-switched', render); on('history', render);
   window.addEventListener('resize', render);
   render();
@@ -67,4 +80,23 @@ function finishTyping() {
   if (ta) ta.blur();
   if (state.editing) state.editing = null;
   select(null);
+}
+
+/** Fait défiler le document pour que la zone de saisie reste visible au-dessus du clavier. */
+export function keepEditorVisible(soft) {
+  const ta = document.querySelector('textarea.editor'), mat = document.getElementById('mat');
+  if (!ta || !mat) return;
+  const m = mat.getBoundingClientRect(), r = ta.getBoundingClientRect();
+  const vv = window.visualViewport;
+  const bottom = Math.min(m.bottom, vv ? vv.offsetTop + vv.height : innerHeight) - 12;
+  const top = m.top + 8, avail = bottom - top;
+  if (avail <= 40) return;
+  if (r.height <= avail * 0.7) {
+    // zone courte : placée dans le tiers supérieur de l'espace visible
+    if (!soft || r.top < top || r.bottom > bottom) mat.scrollTop += r.top - (top + (avail - r.height) * 0.3);
+  } else if (!soft || r.bottom > bottom) {
+    // zone haute : on garde sa fin (là où l'on écrit) au-dessus du clavier
+    mat.scrollTop += r.bottom - bottom + 20;
+  }
+  if (r.left < m.left + 4 || r.right > m.right - 4) mat.scrollLeft += r.left - m.left - 12;
 }
