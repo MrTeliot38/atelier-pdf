@@ -99,13 +99,28 @@ function groupItemsIntoLines(items) {
     }
     text = text.replace(/\s+/g, ' ').trim();
     if (!text) continue;
+    // position de chaque caractère (pour surligner précisément un mot trouvé par la recherche)
+    let t = '', pe = null;
+    const cx = [];
+    for (const it of L.items) {
+      if (pe != null && it.x - pe > 0.17 * it.size && t && !t.endsWith(' ') && !/^\s/.test(it.str)) { t += ' '; cx.push(pe); }
+      const n = it.str.length;
+      for (let k = 0; k < n; k++) {
+        const c = it.str[k], x = it.x + it.w * k / n;
+        if (/\s/.test(c)) { if (!t || t.endsWith(' ')) continue; t += ' '; cx.push(x); }
+        else { t += c; cx.push(x); }
+      }
+      pe = it.x + it.w;
+    }
+    while (t.endsWith(' ')) { t = t.slice(0, -1); cx.pop(); }
+    cx.push(L.x1);
     const fontName = [...weight].sort((a, b) => b[1] - a[1])[0][0];
     const main = L.items.find(i => i.fontName === fontName);
     const size = [...sizeW].sort((a, b) => b[1] - a[1])[0][0];
     // ligne de base de la police dominante (les exposants ne doivent pas la décaler)
     const base = main.base;
     out.push({ x: L.x0, w: L.x1 - L.x0, base, size, top: base - size * Math.min(0.95, Math.max(0.7, main.ascent)), bottom: base + size * 0.24,
-      text, fontName, family: main.family });
+      text, fontName, family: main.family, cx: t === text ? cx : null });
   }
   return out;
 }

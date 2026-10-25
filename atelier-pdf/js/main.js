@@ -8,6 +8,7 @@ import { openFiles, closeDocument, addImageAsset, imageToPage } from './docs.js'
 import { closeTab, cycle, openMergeDialog, anyDirty, tabCount } from './tabs.js';
 import { initPageImages } from './pageimages.js';
 import { initCtxBar, touchUI } from './ctxbar.js';
+import { initSearch, openSearch, closeSearch, isSearchOpen, searchStep } from './search.js';
 import { openSignatureDialog } from './signature.js';
 import { downloadPdf, downloadFlattened, openPrintDialog, openImageDialog } from './export.js';
 import { savePdf, openShareDialog } from './share.js';
@@ -16,7 +17,7 @@ import { commit } from './core.js';
 import { openScanner, isScannerOpen } from './scanner.js';
 import { isAndroidApp, isTouch, saveBlob, printPdf, onIncomingFiles, initBackButton, defaultPdfStatus, openAppSettings, openTestPdf, TEST_PDF_NAME } from './platform.js';
 
-const VERSION = '1.6.4';
+const VERSION = '1.7.0';
 const desktop = window.atelierDesktop;
 if (desktop) document.body.classList.add('is-desktop');
 const isMobile = () => window.innerWidth < 860;
@@ -28,6 +29,7 @@ initPagesPanel();
 initInspector();
 initPageImages();
 initCtxBar();
+initSearch();
 setTool('select');
 
 // premier lancement après une mise à jour
@@ -163,6 +165,7 @@ $('#btnZoomFit').onclick = () => fitWidth();
 on('zoom', () => $('#btnZoomFit').textContent = Math.round(state.zoom * 100) + ' %');
 $('#btnDownload').onclick = () => desktop ? savePdf() : downloadPdf();
 $('#btnShare').onclick = openShareDialog;
+$('#btnSearch').onclick = () => isSearchOpen() ? closeSearch() : openSearch();
 $('#btnPrint').onclick = openPrintDialog;
 $('#btnImages').onclick = openImageDialog;
 $('#btnToggleSidebar').onclick = () => {
@@ -216,6 +219,9 @@ document.addEventListener('keydown', e => {
   if (!state.pages.length) return;
   if (mod && k === 's') { e.preventDefault(); return desktop ? savePdf(e.shiftKey) : downloadPdf(); }
   if (mod && k === 'p') { e.preventDefault(); return openPrintDialog(); }
+  if (e.key === 'F3' && isSearchOpen()) { e.preventDefault(); return searchStep(e.shiftKey ? -1 : 1); }
+  if ((mod && k === 'f') || e.key === 'F3') { e.preventDefault(); return openSearch(); }
+  if (e.key === 'Enter' && !inField && !mod && isSearchOpen() && !state.selected) { e.preventDefault(); return searchStep(e.shiftKey ? -1 : 1); }
   if (mod && k === 'w') { e.preventDefault(); return closeTab(); }
   if (mod && e.key === 'Tab') { e.preventDefault(); return cycle(e.shiftKey ? -1 : 1); }
   if (mod && e.key === 'PageDown') { e.preventDefault(); return cycle(1); }
@@ -237,6 +243,7 @@ document.addEventListener('keydown', e => {
     return toast('Aucun élément sélectionné : cliquez d\'abord sur l\'élément à supprimer (outil Sélection).');
   }
   if (e.key === 'Escape') {
+    if (isSearchOpen()) return closeSearch();
     if (state.pendingSignature) { state.pendingSignature = null; return setTool('select'); }
     if (state.selected) return select(null);
     if (state.selectedPages.size) return clearPageSelection();
@@ -306,6 +313,7 @@ if (isAndroidApp) {
   // bouton Retour : fermer ce qui est ouvert, puis demander avant de quitter avec des modifications
   initBackButton(async () => {
     if (isModalOpen()) { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); return true; }
+    if (isSearchOpen()) { closeSearch(); return true; }
     const openMenu = $$('.menu').find(m => !m.hidden);
     if (openMenu) { openMenu.hidden = true; return true; }
     if (document.body.classList.contains('sidebar-open')) { document.body.classList.remove('sidebar-open'); return true; }
@@ -393,7 +401,7 @@ function defaultReaderDialog() {
 function showHelp() {
   const keys = [
     ['Ctrl + O', 'Ouvrir un PDF ou une image'], ['Ctrl + S', desktop ? 'Enregistrer (Ctrl + Maj + S : enregistrer sous)' : 'Télécharger le PDF modifié'], ['Ctrl + P', 'Choisir les pages et imprimer'],
-    ['Ctrl + Z / Ctrl + Y', 'Annuler / rétablir'], ['Ctrl + Tab', 'Onglet suivant (Ctrl + W : fermer l\'onglet)'], ['Suppr', 'Effacer l\'élément sélectionné'], ['Flèches', 'Déplacer l\'élément (Maj : plus vite)'],
+    ['Ctrl + Z / Ctrl + Y', 'Annuler / rétablir'], ['Ctrl + F', 'Rechercher dans le document (Entrée : résultat suivant)'], ['Ctrl + Tab', 'Onglet suivant (Ctrl + W : fermer l\'onglet)'], ['Suppr', 'Effacer l\'élément sélectionné'], ['Flèches', 'Déplacer l\'élément (Maj : plus vite)'],
     ['Ctrl + D', 'Dupliquer l\'élément'], ['Ctrl + molette', 'Zoomer'], ['Échap', 'Désélectionner'],
     ['V E T S C M H', 'Sélection, Modifier le texte, Texte, Signer, Cocher, Masquer, Surligner'],
   ];

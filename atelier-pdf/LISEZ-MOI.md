@@ -15,6 +15,7 @@ Tout le traitement se fait sur l'appareil de la personne : aucun document n'est 
 - **Onglets** : chaque PDF ouvert s'affiche dans son propre onglet (Ctrl+Tab pour passer de l'un à l'autre, Ctrl+W pour fermer). Chaque onglet garde son historique d'annulation.
 - **Fusionner** : bouton « Fusionner » de la barre d'onglets (ou menu ⋮) pour réunir plusieurs PDF en un seul, dans l'ordre voulu, au début, à la fin ou après la page affichée.
 - **Scanner un document** : photographiez une ou plusieurs feuilles avec le téléphone (ou partez de photos existantes). Bords repérés automatiquement, perspective redressée, papier blanchi ; recadrage, rotation et ordre des pages modifiables ; PDF en qualité faible, moyenne ou élevée, puis partage, enregistrement ou modification.
+- **Rechercher** (Ctrl+F ou la loupe) : un mot ou une expression dans tout le document, sans tenir compte des majuscules ni des accents (bouton « Aa » pour les respecter). Résultats surlignés, Entrée pour passer au suivant, liste des résultats avec le contexte. Fonctionne aussi sur les scans après « Lire le texte », et dans les textes ajoutés ou corrigés.
 - **Masquer, surligner, insérer une image.**
 - **Pages** : réordonner par glisser-déposer, pivoter, dupliquer, supprimer, ajouter une page blanche, les pages d'un autre PDF ou une photo ; télécharger une sélection de pages seule.
 - **Imprimer** en choisissant les pages (clic sur les miniatures ou saisie « 1-3, 6 »).
