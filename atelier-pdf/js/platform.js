@@ -80,6 +80,11 @@ export async function defaultPdfStatus() {
   try { return await native.defaultPdfStatus(); } catch { return { isDefault: false, hasOther: false }; }
 }
 export const openAppSettings = pkg => native.openAppSettings({ package: pkg });
+/** PDF d'essai déposé dans Téléchargements, puis ouverture de l'application Fichiers. */
+export async function testPdfInDownloads(bytes) {
+  return native.testPdfInDownloads({ name: TEST_PDF_NAME, data: await blobToBase64(new Blob([bytes], { type: 'application/pdf' })) });
+}
+export const removeTestPdf = () => native?.removeTestPdf?.({ name: TEST_PDF_NAME }).catch(() => {});
 export async function openTestPdf(bytes) {
   return native.openTestPdf({ name: TEST_PDF_NAME, data: await blobToBase64(new Blob([bytes], { type: 'application/pdf' })) });
 }

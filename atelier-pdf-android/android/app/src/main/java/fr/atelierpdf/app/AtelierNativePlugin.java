@@ -1,6 +1,12 @@
 package fr.atelierpdf.app;
 
 import android.app.Activity;
+import android.app.DownloadManager;
+import android.content.ContentValues;
+import android.os.Build;
+import android.os.Environment;
+import android.provider.MediaStore;
+import java.io.OutputStream;
 import android.content.ClipData;
 import android.content.ContentResolver;
 import android.content.Context;
@@ -360,6 +366,66 @@ public class AtelierNativePlugin extends Plugin {
         } catch (Exception e) {
             call.reject("Ouverture impossible : " + e.getMessage());
         }
+    }
+
+    /**
+     * PDF d'essai déposé dans Téléchargements, puis ouverture de l'application Fichiers :
+     * touché depuis Fichiers, Android propose « Toujours » (ce qu'il ne fait pas toujours
+     * quand c'est Atelier PDF lui-même qui ouvre le fichier).
+     */
+    @PluginMethod
+    public void testPdfInDownloads(PluginCall call) {
+        String name = safeName(call.getString("name", "Atelier PDF - essai.pdf"));
+        String data = call.getString("data");
+        if (data == null) { call.reject("Aucune donnée"); return; }
+        if (Build.VERSION.SDK_INT < 29) { call.reject("Version d'Android trop ancienne"); return; }
+        try {
+            ContentResolver cr = getContext().getContentResolver();
+            deleteOwnDownload(cr, name);
+            ContentValues v = new ContentValues();
+            v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+            v.put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf");
+            v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+            v.put(MediaStore.MediaColumns.IS_PENDING, 1);
+            Uri uri = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+            if (uri == null) throw new Exception("Téléchargements indisponible");
+            try (OutputStream os = cr.openOutputStream(uri)) {
+                if (os == null) throw new Exception("Écriture impossible");
+                os.write(Base64.decode(data, Base64.DEFAULT));
+            }
+            v.clear();
+            v.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            cr.update(uri, v, null, null);
+            boolean opened = false;
+            try {
+                Intent i = new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getActivity().startActivity(i);
+                opened = true;
+            } catch (Exception ignored) { }
+            JSObject r = new JSObject();
+            r.put("saved", true);
+            r.put("opened", opened);
+            call.resolve(r);
+        } catch (Exception e) {
+            call.reject("Enregistrement impossible : " + e.getMessage());
+        }
+    }
+
+    /** Retire le PDF d'essai de Téléchargements (seulement celui créé par l'application). */
+    @PluginMethod
+    public void removeTestPdf(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= 29) {
+            try { deleteOwnDownload(getContext().getContentResolver(), safeName(call.getString("name", ""))); } catch (Exception ignored) { }
+        }
+        call.resolve();
+    }
+
+    private void deleteOwnDownload(ContentResolver cr, String name) {
+        if (Build.VERSION.SDK_INT < 29 || name.isEmpty()) return;
+        // sans permission de stockage, MediaStore ne laisse toucher qu'aux fichiers créés par l'application
+        try { cr.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI, MediaStore.MediaColumns.DISPLAY_NAME + "=?", new String[] { name }); }
+        catch (Exception ignored) { }
     }
 
     private static String safeName(String n) {

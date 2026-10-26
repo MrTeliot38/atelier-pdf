@@ -17,9 +17,9 @@ import { savePdf, openShareDialog } from './share.js';
 import { modal, confirmDialog, isModalOpen } from './ui.js';
 import { commit } from './core.js';
 import { openScanner, isScannerOpen } from './scanner.js';
-import { isAndroidApp, isTouch, saveBlob, printPdf, onIncomingFiles, initBackButton, defaultPdfStatus, openAppSettings, openTestPdf, TEST_PDF_NAME } from './platform.js';
+import { isAndroidApp, isTouch, saveBlob, printPdf, onIncomingFiles, initBackButton, defaultPdfStatus, openAppSettings, openTestPdf, testPdfInDownloads, removeTestPdf, TEST_PDF_NAME } from './platform.js';
 
-const VERSION = '1.8.1';
+const VERSION = '1.8.2';
 const desktop = window.atelierDesktop;
 if (desktop) document.body.classList.add('is-desktop');
 const isMobile = () => window.innerWidth < 860;
@@ -344,6 +344,8 @@ async function refreshDefaultStatus() {
     isDefaultReader = !!defaultInfo.isDefault;
     $('[data-act="default"]').textContent = isDefaultReader ? '✓ Lecteur PDF par défaut' : 'Lecteur PDF par défaut…';
     $('#defaultHint').hidden = isDefaultReader;
+    // réglage fait : le PDF d'essai déposé dans Téléchargements n'a plus d'utilité
+    try { if (isDefaultReader && localStorage.getItem('atelierpdf.testpdf')) { removeTestPdf(); localStorage.removeItem('atelierpdf.testpdf'); } } catch {}
     defaultDialogRefresh?.();
     return defaultInfo;
   }
@@ -367,11 +369,25 @@ async function makeTestPdf() {
 }
 function androidDefaultDialog() {
   const body = h('div', { class: 'prose' });
-  const foot = h('div', { class: 'row', style: { justifyContent: 'flex-end', width: '100%', gap: '8px' } });
-  const choose = async () => {
+  const foot = h('div', { class: 'row', style: { justifyContent: 'flex-end', width: '100%', gap: '8px', flexWrap: 'wrap' } });
+  let step = 'intro';
+  // méthode sûre : le PDF d'essai est touché depuis l'application Fichiers (Android y propose « Toujours »)
+  const viaFiles = async () => {
+    try {
+      const r = await testPdfInDownloads(await makeTestPdf());
+      try { localStorage.setItem('atelierpdf.testpdf', '1'); } catch {}
+      if (!r?.opened) toast('Ouvrez l\'application Fichiers (ou Mes fichiers), dossier Téléchargements.', { duration: 9000 });
+      step = 'files'; draw();
+    } catch (e) { console.warn(e); direct(); }
+  };
+  // méthode directe (anciennes versions d'Android)
+  const direct = async () => {
     try { await openTestPdf(await makeTestPdf()); m.close(); }
     catch (e) { toast('Impossible d\'ouvrir le PDF d\'essai : ' + (e.message || e), { error: true }); }
   };
+  const steps = () => h('ol', {},
+    h('li', {}, 'Dans ', h('b', {}, 'Fichiers'), ' (Téléchargements), touchez ', h('b', {}, '« ' + TEST_PDF_NAME.replace(/\.pdf$/, '') + ' »'), '.'),
+    h('li', {}, 'Dans la liste, touchez ', h('b', {}, 'Atelier PDF'), ', puis ', h('b', {}, 'Toujours'), '.'));
   const draw = () => {
     const st = defaultInfo || {};
     foot.replaceChildren();
@@ -381,17 +397,22 @@ function androidDefaultDialog() {
       foot.append(h('button', { class: 'btn primary', onclick: () => m.close() }, 'Fermer'));
     } else if (st.hasOther) {
       body.replaceChildren(
-        h('p', {}, 'Vos PDF s\'ouvrent actuellement avec ', h('b', {}, st.label || 'une autre application'), '. Android ne permet pas de changer ce réglage à sa place : c\'est l\'affaire de deux étapes.'),
+        h('p', {}, 'Vos PDF s\'ouvrent actuellement avec ', h('b', {}, st.label || 'une autre application'), '. Android ne permet pas de changer ce réglage à sa place :'),
         h('ol', {},
           h('li', {}, 'Touchez ', h('b', {}, `Réglages de ${st.label || 'l\'application'}`), ', puis ', h('b', {}, 'Ouvrir par défaut'), ' (ou « Définir par défaut ») et ', h('b', {}, 'Effacer les préférences par défaut'), '.'),
-          h('li', {}, 'Revenez ici et touchez ', h('b', {}, 'Choisir Atelier PDF'), '.')));
-      foot.append(h('button', { class: 'btn outline', onclick: () => openAppSettings(st.package).catch(() => toast('Ouvrez Paramètres › Applications › ' + st.label + '.', { duration: 8000 })) }, `Réglages de ${st.label || 'l\'application'}`),
-        h('button', { class: 'btn primary', onclick: choose }, 'Choisir Atelier PDF'));
+          h('li', {}, 'Revenez ici : la suite s\'affiche.')));
+      foot.append(h('button', { class: 'btn outline', onclick: () => m.close() }, 'Plus tard'),
+        h('button', { class: 'btn primary', onclick: () => openAppSettings(st.package).catch(() => toast('Ouvrez Paramètres › Applications › ' + st.label + '.', { duration: 8000 })) }, `Réglages de ${st.label || 'l\'application'}`));
+    } else if (step === 'files') {
+      body.replaceChildren(
+        h('p', {}, 'Le PDF d\'essai est dans vos Téléchargements. Dans l\'application Fichiers qui vient de s\'ouvrir :'), steps(),
+        h('p', { class: 'help' }, 'Si « Toujours » n\'apparaît pas ou reste grisé, Android le bloque sur ce téléphone (applications clonées, « Dual Messenger » ou profil professionnel) : choisissez alors Atelier PDF « Une seule fois » à chaque ouverture.'));
+      foot.append(h('button', { class: 'btn outline', onclick: () => m.close() }, 'Fermer'), h('button', { class: 'btn primary', onclick: viaFiles }, 'Rouvrir Fichiers'));
     } else {
       body.replaceChildren(
-        h('p', {}, 'Un PDF d\'essai va s\'ouvrir et Android vous demandera avec quelle application.'),
-        h('p', {}, 'Choisissez ', h('b', {}, 'Atelier PDF'), ', puis ', h('b', {}, 'Toujours'), '.'));
-      foot.append(h('button', { class: 'btn outline', onclick: () => m.close() }, 'Plus tard'), h('button', { class: 'btn primary', onclick: choose }, 'Choisir Atelier PDF'));
+        h('p', {}, 'Android ne laisse pas une application se choisir elle-même. Atelier PDF dépose un PDF d\'essai dans vos Téléchargements et ouvre l\'application Fichiers. Ensuite :'), steps(),
+        h('p', { class: 'help' }, 'Le PDF d\'essai est supprimé une fois le réglage fait.'));
+      foot.append(h('button', { class: 'btn outline', onclick: () => m.close() }, 'Plus tard'), h('button', { class: 'btn primary', onclick: viaFiles }, 'C\'est parti'));
     }
   };
   const m = modal({ title: 'Lecteur PDF par défaut', width: 520, body, foot: [foot], onClose: () => { defaultDialogRefresh = null; } });

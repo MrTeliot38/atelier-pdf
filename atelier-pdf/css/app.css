@@ -279,7 +279,7 @@ body.sidebar-hidden .sidebar { display: none; }
 #hint { text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- Welcome ---------- */
-.welcome { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; overflow: auto; }
+.welcome { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: 24px; overflow: auto; overflow-x: hidden; }
 body:not(.is-empty) .welcome { display: none; }
 .welcome-card {
   width: min(560px, 100%); background: var(--chrome); border-radius: 16px; padding: 36px 40px 30px; text-align: center; box-shadow: var(--shadow-pop);
@@ -748,7 +748,8 @@ body.tool-redact .page, body.tool-annot .page { touch-action: none; }
 .stamp-pick.on { box-shadow: 0 0 0 2px var(--accent); }
 
 /* ---------- Accueil : fichiers récents ---------- */
-.recents { margin: 22px auto 0; text-align: left; width: min(420px, 100%); }
+.recents { margin: 22px auto 0; text-align: left; width: min(420px, 100%); min-width: 0; }
+.recent { min-width: 0; }
 .recents-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
 .recents-head h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0; margin-right: auto; font-weight: 700; }
 .recents-head .linklike { font-size: 13px; }
