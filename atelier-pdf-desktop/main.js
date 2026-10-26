@@ -2,7 +2,7 @@
 // La même application web est servie depuis le dossier « app » par un protocole interne app://,
 // avec en plus : polices installées, ouverture des PDF par double-clic (une fenêtre par document),
 // enregistrement sur le fichier d'origine, partage par e-mail / WhatsApp, réglage « lecteur par défaut ».
-const { app, BrowserWindow, protocol, ipcMain, dialog, shell, Menu, session } = require('electron');
+const { app, BrowserWindow, protocol, ipcMain, dialog, shell, Menu, session, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -28,6 +28,18 @@ const allowedPaths = new Set();
 const allow = p => { if (typeof p === 'string' && p) allowedPaths.add(path.resolve(p)); };
 const isAllowed = p => typeof p === 'string' && allowedPaths.has(path.resolve(p));
 const okFile = p => typeof p === 'string' && /\.(pdf|png|jpe?g|webp)$/i.test(p) && fs.existsSync(p);
+
+/* ---------------- apparence (Automatique / Clair / Sombre) ---------------- */
+// gardée par l'application pour que la barre de titre soit dans le bon thème dès l'ouverture
+const themeFile = () => path.join(app.getPath('userData'), 'theme.json');
+function loadTheme() {
+  try { const t = JSON.parse(fs.readFileSync(themeFile(), 'utf8')).theme; if (['system', 'light', 'dark'].includes(t)) nativeTheme.themeSource = t; } catch {}
+}
+ipcMain.on('theme:set', guardOn((_e, t) => {
+  if (!['system', 'light', 'dark'].includes(t) || nativeTheme.themeSource === t) return;
+  nativeTheme.themeSource = t;
+  fs.promises.writeFile(themeFile(), JSON.stringify({ theme: t })).catch(() => {});
+}));
 
 /* ---------------- fichiers récents ---------------- */
 // Liste gardée dans le dossier de l'application (chemins seulement, jamais de copie des documents)
@@ -79,7 +91,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1400, height: 900, minWidth: 820, minHeight: 560, show: false,
     ...(last && !first ? { x: last.getBounds().x + 32, y: last.getBounds().y + 32 } : {}),
-    backgroundColor: '#2b3a34', title: 'Atelier PDF', icon: path.join(__dirname, 'app', 'icons', 'icon-512.png'),
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c2723' : '#2b3a34', title: 'Atelier PDF', icon: path.join(__dirname, 'app', 'icons', 'icon-512.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, sandbox: true, spellcheck: true },
   });
   const info = { win, ready: false, queue: [], dirty: false, hasDoc: false };
@@ -300,6 +312,7 @@ ipcMain.handle('defaults:open', guard(async () => {
 
 /* ---------------- démarrage ---------------- */
 app.whenReady().then(() => {
+  loadTheme();
   protocol.handle('app', async req => {
     const u = new URL(req.url);
     if (u.host !== 'atelier') return new Response('Interdit', { status: 403 });

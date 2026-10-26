@@ -2,9 +2,9 @@
 @font-face { font-family: "Atkinson"; src: url("../fonts/atkinson-hyperlegible-latin-700-normal.woff2") format("woff2"); font-weight: 700; font-display: swap; }
 
 :root {
-  --mat: #2b3a34;
-  --mat-line: rgba(255,255,255,.055);
-  --mat-ink: #cfd9d4;
+  --mat: #dfe5e2;
+  --mat-line: rgba(24,33,29,.05);
+  --mat-ink: #4d5c55;
   --chrome: #f4f6f5;
   --chrome-2: #e9eeec;
   --surface: #ffffff;
@@ -19,7 +19,7 @@
   --ok: #2f7d4f;
   --radius-s: 6px;
   --radius-m: 10px;
-  --shadow-page: 0 1px 2px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.28);
+  --shadow-page: 0 1px 2px rgba(20,30,26,.2), 0 6px 20px rgba(20,30,26,.14);
   --shadow-pop: 0 10px 30px rgba(20,30,26,.22), 0 2px 6px rgba(20,30,26,.12);
   --topbar-h: 56px;
   /* zones réservées par le système (barre d'état, encoche, barre de gestes) — application Android et téléphones */
@@ -33,10 +33,13 @@
   --font: "Atkinson", "Segoe UI", system-ui, -apple-system, sans-serif;
   color-scheme: light;
 }
+/* Thème sombre : automatique (réglage de l'appareil) ou choisi dans le menu ⋮ › Apparence */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --mat: #1c2723;
     --mat-line: rgba(255,255,255,.04);
+    --mat-ink: #cfd9d4;
+    --shadow-page: 0 1px 2px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.28);
     --chrome: #222c28;
     --chrome-2: #2b3631;
     --surface: #27322e;
@@ -49,6 +52,23 @@
     --danger: #ff7d70;
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+    --mat: #1c2723;
+    --mat-line: rgba(255,255,255,.04);
+    --mat-ink: #cfd9d4;
+    --shadow-page: 0 1px 2px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.28);
+    --chrome: #222c28;
+    --chrome-2: #2b3631;
+    --surface: #27322e;
+    --line: #3b4843;
+    --ink: #e8eeeb;
+    --muted: #a3b2ab;
+    --accent: #7d97ff;
+    --accent-soft: #2d3863;
+    --on-accent: #0f1530;
+    --danger: #ff7d70;
+    color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
@@ -775,3 +795,15 @@ body.tool-redact .page, body.tool-annot .page { touch-action: none; }
   .recent-open { padding: 9px 8px; }
 }
 @media (pointer: coarse) { .recent-x { opacity: 1; } }
+
+/* ---------- Menu : apparence (Automatique / Clair / Sombre) ---------- */
+.menu-theme { display: flex; align-items: center; gap: 8px; padding: 8px 12px 10px; border-top: 1px solid var(--line); margin-top: 4px; }
+.menu-theme > span { color: var(--muted); font-size: 13px; margin-right: auto; }
+.menu-theme .seg { display: inline-flex; background: var(--chrome-2); border-radius: 8px; padding: 2px; }
+.menu-theme .seg button { border: 0; background: none; color: var(--ink); font: inherit; font-size: 13px; padding: 5px 9px; border-radius: 6px; cursor: pointer; }
+.menu-theme .seg button[aria-pressed="true"] { background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.18); font-weight: 700; }
+.menu-theme .seg { border: 0; overflow: visible; }
+.menu-theme .seg button + button { border-left: 0; }
+.menu-theme .seg button:hover { background: var(--surface); }
+/* boutons sur le fond sombre de l'appareil photo, quel que soit le thème */
+.scan-hint .btn.outline { background: transparent; color: #fff; border-color: rgba(255,255,255,.55); }

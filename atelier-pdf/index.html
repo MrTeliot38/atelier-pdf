@@ -11,6 +11,7 @@
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <link rel="stylesheet" href="css/app.css">
+<script src="js/theme-init.js"></script>
 <script src="vendor/pdf-lib.min.js"></script>
 <script src="vendor/fontkit.umd.min.js"></script>
 <script src="vendor/jszip.min.js"></script>
@@ -63,6 +64,10 @@
     <button role="menuitem" data-act="default" class="desktop-only" hidden>Définir comme lecteur PDF par défaut…</button>
     <button role="menuitem" data-act="help">Aide et raccourcis</button>
     <button role="menuitem" data-act="about">À propos</button>
+    <div class="menu-theme" role="group" aria-label="Apparence">
+      <span>Apparence</span>
+      <div class="seg"><button type="button" data-theme-set="auto" title="Comme l'appareil">Auto</button><button type="button" data-theme-set="light">Clair</button><button type="button" data-theme-set="dark">Sombre</button></div>
+    </div>
   </div>
 </header>
 

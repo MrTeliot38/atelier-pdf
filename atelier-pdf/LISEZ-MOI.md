@@ -21,6 +21,7 @@ Tout le traitement se fait sur l'appareil de la personne : aucun document n'est 
 - **Caviarder** : bandeau noir sur une information à cacher (nom, adresse, numéro…). À l'enregistrement, le texte et les images situés dessous sont réellement supprimés (les pages concernées deviennent des images) : rien ne reste copiable ni retrouvable par la recherche.
 - **Annoter** : flèches, traits, rectangles, cercles (couleur et épaisseur au choix), notes adhésives, tampons « Lu et approuvé », « Urgent », « Reçu le » (avec la date du jour), « Validé », « Payé », « Copie », « Confidentiel », « Brouillon » ou texte libre ; un tampon peut être copié sur toutes les pages.
 - **Fichiers récents** sur l'écran d'accueil (et menu ⋮ › « Fichiers récents… ») : un clic rouvre le document. Dans le navigateur et sur Android, une copie des 8 derniers PDF ouverts est gardée sur l'appareil (dernière version enregistrée) ; rien n'est envoyé ailleurs, la liste s'efface en un clic et peut être désactivée.
+- **Apparence** (menu ⋮, en bas) : Automatique (comme l'appareil), Clair ou Sombre. Le choix est retenu ; dans l'application Windows la barre de titre suit, sur Android les icônes de la barre d'état aussi.
 - **Masquer, surligner, insérer une image.**
 - **Pages** : réordonner par glisser-déposer, pivoter, dupliquer, supprimer, ajouter une page blanche, les pages d'un autre PDF ou une photo ; télécharger une sélection de pages seule.
 - **Imprimer** en choisissant les pages (clic sur les miniatures ou saisie « 1-3, 6 »).

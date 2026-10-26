@@ -10,6 +10,7 @@ import { initPageImages } from './pageimages.js';
 import { initCtxBar, touchUI } from './ctxbar.js';
 import { openCompressDialog } from './compress.js';
 import { initRecents, openRecentsDialog } from './recents.js';
+import { initTheme } from './theme.js';
 import { initSearch, openSearch, closeSearch, isSearchOpen, searchStep } from './search.js';
 import { openSignatureDialog } from './signature.js';
 import { downloadPdf, downloadFlattened, openPrintDialog, openImageDialog } from './export.js';
@@ -19,7 +20,7 @@ import { commit } from './core.js';
 import { openScanner, isScannerOpen } from './scanner.js';
 import { isAndroidApp, isTouch, saveBlob, printPdf, onIncomingFiles, initBackButton, defaultPdfStatus, openAppSettings, openTestPdf, testPdfInDownloads, removeTestPdf, TEST_PDF_NAME } from './platform.js';
 
-const VERSION = '1.8.2';
+const VERSION = '1.9.0';
 const desktop = window.atelierDesktop;
 if (desktop) document.body.classList.add('is-desktop');
 const isMobile = () => window.innerWidth < 860;
@@ -32,6 +33,7 @@ initInspector();
 initPageImages();
 initCtxBar();
 initSearch();
+initTheme();
 setTool('select');
 
 // premier lancement après une mise à jour

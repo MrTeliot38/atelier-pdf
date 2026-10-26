@@ -30,6 +30,8 @@ import android.util.Base64;
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResult;
 import androidx.core.content.FileProvider;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -426,6 +428,21 @@ public class AtelierNativePlugin extends Plugin {
         // sans permission de stockage, MediaStore ne laisse toucher qu'aux fichiers créés par l'application
         try { cr.delete(MediaStore.Downloads.EXTERNAL_CONTENT_URI, MediaStore.MediaColumns.DISPLAY_NAME + "=?", new String[] { name }); }
         catch (Exception ignored) { }
+    }
+
+    /** Icônes de la barre d'état et de navigation : sombres sur thème clair, claires sur thème sombre. */
+    @PluginMethod
+    public void setBarStyle(PluginCall call) {
+        final boolean light = Boolean.TRUE.equals(call.getBoolean("light", false));
+        final Activity act = getActivity();
+        act.runOnUiThread(() -> {
+            try {
+                WindowInsetsControllerCompat c = WindowCompat.getInsetsController(act.getWindow(), act.getWindow().getDecorView());
+                c.setAppearanceLightStatusBars(light);
+                c.setAppearanceLightNavigationBars(light);
+            } catch (Exception ignored) { }
+        });
+        call.resolve();
     }
 
     private static String safeName(String n) {
