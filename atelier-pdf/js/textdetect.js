@@ -65,6 +65,22 @@ async function nativeLines(page) {
   return lines;
 }
 
+let measureCtx = null;
+/** Position relative (0..1) du début de chaque caractère dans un fragment de texte. */
+function charOffsets(str, family = '', fontName = '') {
+  const n = str.length, out = new Float32Array(n + 1);
+  try {
+    measureCtx = measureCtx || document.createElement('canvas').getContext('2d');
+    const f = (family + ' ' + fontName).toLowerCase();
+    const fam = /mono|courier/.test(f) ? 'Courier New, monospace' : /serif|times|georgia|garamond/.test(f) && !/sans/.test(f) ? 'Times New Roman, serif' : 'Arial, Helvetica, sans-serif';
+    const bold = /bold|black|heavy|semibold|demi/.test(f) ? 'bold ' : '';
+    measureCtx.font = `${bold}100px ${fam}`;
+    const total = measureCtx.measureText(str).width || 1;
+    for (let k = 0; k <= n; k++) out[k] = measureCtx.measureText(str.slice(0, k)).width / total;
+  } catch { for (let k = 0; k <= n; k++) out[k] = k / Math.max(1, n); }
+  return out;
+}
+
 function groupItemsIntoLines(items) {
   items.sort((a, b) => a.base - b.base || a.x - b.x);
   const lines = [];
@@ -99,14 +115,16 @@ function groupItemsIntoLines(items) {
     }
     text = text.replace(/\s+/g, ' ').trim();
     if (!text) continue;
-    // position de chaque caractère (pour surligner précisément un mot trouvé par la recherche)
+    // position de chaque caractère (pour surligner précisément un mot trouvé par la recherche) :
+    // largeurs mesurées avec une police proche, ramenées à la largeur réelle du fragment
     let t = '', pe = null;
     const cx = [];
     for (const it of L.items) {
       if (pe != null && it.x - pe > 0.17 * it.size && t && !t.endsWith(' ') && !/^\s/.test(it.str)) { t += ' '; cx.push(pe); }
       const n = it.str.length;
+      const pos = charOffsets(it.str, it.family, it.fontName);
       for (let k = 0; k < n; k++) {
-        const c = it.str[k], x = it.x + it.w * k / n;
+        const c = it.str[k], x = it.x + it.w * pos[k];
         if (/\s/.test(c)) { if (!t || t.endsWith(' ')) continue; t += ' '; cx.push(x); }
         else { t += c; cx.push(x); }
       }
@@ -292,7 +310,7 @@ function groupParagraphs(lines, ocr) {
   return groups.map(makeBlock);
 }
 
-function makeBlock(lines) {
+export function makeBlock(lines) {
   const first = lines[0];
   const x0 = Math.min(...lines.map(l => l.x)), x1 = Math.max(...lines.map(l => l.x + l.w));
   const top = Math.min(...lines.map(l => l.top)), bottom = Math.max(...lines.map(l => l.bottom));
@@ -377,3 +395,32 @@ export async function sampleColors(page, rect) {
 }
 
 export function clearTextCaches() { nativeCache.clear(); ocrCache.clear(); }
+
+/**
+ * Le texte de cette zone est-il en gras ? Épaisseur des traits mesurée sur l'image (longueur médiane des
+ * segments d'encre, rapportée à la taille du texte). Utile pour les scans, où la police est inconnue.
+ */
+export async function looksBold(page, rect, fg, size, raw = false) {
+  try {
+    const { canvas, scale } = await pageRaster(page, 3);
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const x0 = clamp(Math.floor(rect.x * scale), 0, canvas.width - 1), y0 = clamp(Math.floor(rect.y * scale), 0, canvas.height - 1);
+    const W = clamp(Math.ceil(rect.w * scale), 1, canvas.width - x0), H = clamp(Math.ceil(rect.h * scale), 1, canvas.height - y0);
+    const d = ctx.getImageData(x0, y0, W, H).data;
+    const m = /^#?([0-9a-f]{6})$/i.exec(fg || ''); const n = m ? parseInt(m[1], 16) : 0;
+    const F = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    const runs = [];
+    for (let y = 0; y < H; y++) {
+      let run = 0;
+      for (let x = 0; x <= W; x++) {
+        const i = (y * W + x) * 4;
+        const ink = x < W && Math.abs(d[i] - F[0]) + Math.abs(d[i + 1] - F[1]) + Math.abs(d[i + 2] - F[2]) < 120;
+        if (ink) run++; else if (run) { runs.push(run); run = 0; }
+      }
+    }
+    if (runs.length < 12) return null;
+    runs.sort((a, b) => a - b);
+    const med = runs[Math.floor(runs.length / 2)] / scale;
+    return raw ? med / size : med / size > 0.115;
+  } catch { return null; }
+}

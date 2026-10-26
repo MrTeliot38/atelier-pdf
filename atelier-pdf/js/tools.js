@@ -1,7 +1,7 @@
 // Outils et interactions sur les pages : sélection, déplacement, texte, coches, masques, signatures
 import { state, on, emit, h, $, uid, clamp, commit, undo, findObject, pageById, ASC, toast, svgIcon, ICONS, STD_FONTS } from './core.js';
-import { getSlot, pagePoint, renderObjects, slots, pagesEl, mat, pageOfElement, isNear, currentPageObj, scrollToPage } from './viewer.js';
-import { getBlocks, runOcr, sampleColors } from './textdetect.js';
+import { getSlot, pagePoint, renderObjects, slots, pagesEl, mat, pageOfElement, isNear, currentPageObj, scrollToPage, shapeSvg } from './viewer.js';
+import { getBlocks, runOcr, sampleColors, looksBold } from './textdetect.js';
 import { matchSystemFont, loadSystemFamily } from './systemfonts.js';
 import { guessFont, MATCH_THRESHOLD } from './fontmatch.js';
 import { liftImage, renderImageLayer, findRegions } from './pageimages.js';
@@ -14,6 +14,8 @@ const TOOL_HINTS = {
   sign: 'Créez ou choisissez une signature, puis cliquez à l\'endroit où signer.',
   mark: 'Cliquez sur une case pour la cocher. Choisissez ✓, ✗ ou ● dans le panneau.',
   mask: 'Tracez un rectangle pour cacher une zone. Sa couleur s\'adapte au fond.',
+  redact: 'Tracez un rectangle sur l\'information à effacer définitivement.',
+  annot: 'Tracez une flèche, un trait ou une forme ; cliquez pour une note ou un tampon.',
   highlight: 'Tracez un rectangle pour surligner.',
 };
 
@@ -200,6 +202,7 @@ function onDown(e) {
     return;
   }
   const p = pagePoint(e, pageId);
+  if (touch && state.tool === 'annot' && (state.annot.kind === 'note' || state.annot.kind === 'stamp')) return waitTap(e, () => addAnnotAt(page, p));
   if (touch && (state.tool === 'text' || state.tool === 'mark' || state.tool === 'sign')) {
     return waitTap(e, () => {
       if (state.tool === 'text') addText(page, p);
@@ -216,7 +219,11 @@ function onDown(e) {
       e.preventDefault();
       if (state.pendingSignature) return placeSignature(page, p);
       return emit('open-signature', {});
-    case 'mask': case 'highlight': e.preventDefault(); return drawRect(e, page, p);
+    case 'mask': case 'highlight': case 'redact': e.preventDefault(); return drawRect(e, page, p);
+    case 'annot':
+      e.preventDefault();
+      if (state.annot.kind === 'note' || state.annot.kind === 'stamp') return addAnnotAt(page, p);
+      return drawShape(e, page, p);
     default: if (state.selected) select(null);
   }
 }
@@ -287,10 +294,16 @@ function startMove(e, page, id) {
 function startResize(e, page, id, hd) {
   const f = findObject(id); if (!f) return;
   const o = f.obj, orig = { ...o }, p0 = pagePoint(e, page.id), ratio = o.h / o.w;
-  const keep = o.type === 'image' || o.type === 'mark';
+  const keep = o.type === 'image' || o.type === 'mark' || o.type === 'stamp';
   track(ev => {
     const p = pagePoint(ev, page.id), dx = p.x - p0.x, dy = p.y - p0.y;
-    if (o.type === 'text') {
+    if (hd === 'p1' || hd === 'p2') {
+      // trait ou flèche : on déplace l'extrémité saisie
+      let a = { x: orig.x + (orig.fx ? orig.w : 0), y: orig.y + (orig.fy ? orig.h : 0) };
+      let b = { x: orig.x + (orig.fx ? 0 : orig.w), y: orig.y + (orig.fy ? 0 : orig.h) };
+      if (hd === 'p1') a = { x: a.x + dx, y: a.y + dy }; else b = { x: b.x + dx, y: b.y + dy };
+      Object.assign(o, { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y), fx: b.x < a.x, fy: b.y < a.y });
+    } else if (o.type === 'text') {
       if (hd === 'e') o.w = Math.max(12, orig.w + dx);
       else { const nx = Math.min(orig.x + dx, orig.x + orig.w - 12); o.w = orig.w + (orig.x - nx); o.x = nx; }
     } else if (keep) {
@@ -308,6 +321,54 @@ function startResize(e, page, id, hd) {
   }, () => { commit(); renderObjects(page.id); emit('selection'); });
 }
 
+/* ------------------------------------------------ annotations */
+/** Flèche, trait, rectangle ou cercle tracé à la souris ou au doigt. Un simple clic pose une forme par défaut. */
+function drawShape(e, page, p0) {
+  const s = getSlot(page.id), z = state.zoom, A = state.annot;
+  if (state.selected) select(null);
+  const ghost = h('div', { class: 'obj shape ghost-shape' });
+  s.objs.append(ghost);
+  let p1 = { ...p0 };
+  const build = (a, b) => {
+    const line = A.kind === 'arrow' || A.kind === 'line';
+    return { id: uid(), type: 'shape', shape: A.kind, color: A.color, width: A.width,
+      x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.max(line ? 0 : 2, Math.abs(b.x - a.x)), h: Math.max(line ? 0 : 2, Math.abs(b.y - a.y)),
+      fx: b.x < a.x, fy: b.y < a.y };
+  };
+  track(ev => {
+    p1 = pagePoint(ev, page.id);
+    const o = build(p0, p1);
+    ghost.replaceChildren(shapeSvg(o, z));
+    Object.assign(ghost.style, { left: o.x * z + 'px', top: o.y * z + 'px', width: o.w * z + 'px', height: o.h * z + 'px' });
+  }, () => {
+    ghost.remove();
+    let o = build(p0, p1);
+    if (Math.hypot(p1.x - p0.x, p1.y - p0.y) < 6) {
+      // simple clic : forme de taille standard
+      const d = { arrow: [70, 0], line: [70, 0], rect: [90, 50], ellipse: [70, 70] }[A.kind] || [70, 40];
+      o = build(p0, { x: p0.x + d[0], y: p0.y + d[1] });
+    }
+    page.objects.push(o);
+    // l'outil reste prêt pour la forme suivante ; la forme se règle ensuite avec l'outil Sélection
+    commit(); renderObjects(page.id);
+  });
+}
+/** Note (post-it) ou tampon posé à l'endroit cliqué. */
+function addAnnotAt(page, p) {
+  const A = state.annot;
+  if (A.kind === 'stamp') {
+    const text = A.stamp, hh = 27;
+    const c = document.createElement('canvas').getContext('2d'); c.font = `bold ${hh * 0.48}px Helvetica, Arial, sans-serif`;
+    const w = Math.max(40, c.measureText(text).width + hh * 0.95);
+    const o = { id: uid(), type: 'stamp', text, color: A.color, x: clamp(p.x - w / 2, 0, page.w - w), y: clamp(p.y - hh / 2, 0, page.h - hh), w, h: hh };
+    page.objects.push(o); commit(); renderObjects(page.id);
+    return;
+  }
+  const o = { id: uid(), type: 'text', x: p.x, y: p.y, w: 150, h: 14, text: '', ...state.textDefaults, size: 11, color: '#111111', bg: '#fff3a0', note: true };
+  page.objects.push(o);
+  startEditing(o.id);
+}
+
 function drawRect(e, page, p0) {
   const s = getSlot(page.id), z = state.zoom;
   const ghost = h('div', { class: 'ghost-rect' });
@@ -321,7 +382,8 @@ function drawRect(e, page, p0) {
     ghost.remove();
     if (r.w < 3 || r.h < 3) { if (state.selected) select(null); return; }
     let o;
-    if (state.tool === 'mask') {
+    if (state.tool === 'redact') o = { id: uid(), type: 'redact', ...r, color: '#000000' };
+    else if (state.tool === 'mask') {
       const { bg } = await sampleColors(page, r);
       o = { id: uid(), type: 'rect', ...r, color: bg };
     } else o = { id: uid(), type: 'highlight', ...r, color: '#ffe14d', opacity: 0.45 };
@@ -407,6 +469,17 @@ async function editBlock(page, b, el) {
   finally { editBusy = false; el?.classList.remove('is-busy'); setHint(TOOL_HINTS[state.tool] || ''); }
 }
 async function doEditBlock(page, b) {
+  const o = await buildEditObject(page, b);
+  page.objects.push(o);
+  startEditing(o.id);
+  renderTextLayer(page.id);
+}
+/**
+ * Prépare la correction d'un bloc de texte du PDF : objet texte de même apparence (police, taille,
+ * couleur, alignement) et effacement de l'ancien texte en conservant le fond. Ne l'ajoute pas à la page.
+ * fontCache : réutilise la police reconnue pour des lignes semblables (remplacements en série).
+ */
+export async function buildEditObject(page, b, { budgetMs = 2500, fontCache = null, fontBlock = null } = {}) {
   const r = { x: b.x, y: b.top, w: b.w, h: b.bottom - b.top };
   const [colors, sysFont] = await Promise.all([sampleColors(page, r), !b.ocr && STD_FONTS[b.font] ? matchSystemFont(b.pdfName) : null]);
   // l'ancien texte est effacé en conservant le fond (couleur, dégradé, photo) — calculé pendant la recherche de police
@@ -417,11 +490,14 @@ async function doEditBlock(page, b) {
   // police inconnue (scan, photo, ou police absente de l'ordinateur) : reconnaissance visuelle, sinon Arial
   let font = sysFont || b.font, bold = b.bold, italic = b.italic, guesses;
   const pdfBase = (b.pdfName || '').replace(/^[A-Z]{6}\+/, '').replace(/[^a-z]/gi, '');
-  if (b.ocr || (!sysFont && STD_FONTS[b.font] && pdfBase && !STD_NAME.test(pdfBase))) {
+  const fkey = (b.pdfName || (b.ocr ? 'ocr' : b.font)) + '|' + Math.round(b.size) + '|' + !!b.bold;
+  if (fontCache && fontCache.has(fkey)) ({ font, bold, italic, guesses } = fontCache.get(fkey));
+  else if (b.ocr || (!sysFont && STD_FONTS[b.font] && pdfBase && !STD_NAME.test(pdfBase))) {
     setHint('Recherche de la police la plus proche…');
     try {
       // la recherche ne doit jamais bloquer les clics suivants : 4 s maximum
-      const all = await guessFont(page, b, { budgetMs: 2500 });
+      // peu de lettres (un nombre, une date) : la police se reconnaît sur la ligne entière
+      const all = await guessFont(page, fontBlock || b, { budgetMs });
       guesses = all.slice(0, 3).map(g => ({ name: g.name, std: g.std, bold: g.bold, italic: g.italic, score: Math.round(g.score * 100) / 100 }));
       if (all[0] && all[0].score >= MATCH_THRESHOLD) {
         const f = await fontFromGuess(all[0]);
@@ -429,6 +505,8 @@ async function doEditBlock(page, b) {
       } else if (b.ocr) { font = 'helvetica'; }
     } catch (e) { console.warn('Reconnaissance de la police', e); if (b.ocr) font = 'helvetica'; }
   }
+  // scan : le gras se voit à l'épaisseur des traits (plus sûr que la comparaison de polices sur quelques lettres)
+  if (b.ocr) { const bb = await looksBold(page, r, colors.fg, b.size); if (bb != null) bold = bb; }
   // une ligne seule (titre, date…) peut s'allonger jusqu'à la marge au lieu de passer à la ligne
   let x, w;
   if (b.lines.length === 1) {
@@ -450,9 +528,8 @@ async function doEditBlock(page, b) {
   };
   // la zone cliquable couvre tout l'emplacement d'origine, même si le nouveau texte est plus court
   o.minH = b.bottom + 1.5 - o.y;
-  page.objects.push(o);
-  startEditing(o.id);
-  renderTextLayer(page.id);
+  if (fontCache && !fontCache.has(fkey)) fontCache.set(fkey, { font, bold, italic, guesses });
+  return o;
 }
 
 /* ------------------------------------------------ édition de texte */

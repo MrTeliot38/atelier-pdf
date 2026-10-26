@@ -8,6 +8,8 @@ import { openFiles, closeDocument, addImageAsset, imageToPage } from './docs.js'
 import { closeTab, cycle, openMergeDialog, anyDirty, tabCount } from './tabs.js';
 import { initPageImages } from './pageimages.js';
 import { initCtxBar, touchUI } from './ctxbar.js';
+import { openCompressDialog } from './compress.js';
+import { initRecents, openRecentsDialog } from './recents.js';
 import { initSearch, openSearch, closeSearch, isSearchOpen, searchStep } from './search.js';
 import { openSignatureDialog } from './signature.js';
 import { downloadPdf, downloadFlattened, openPrintDialog, openImageDialog } from './export.js';
@@ -17,7 +19,7 @@ import { commit } from './core.js';
 import { openScanner, isScannerOpen } from './scanner.js';
 import { isAndroidApp, isTouch, saveBlob, printPdf, onIncomingFiles, initBackButton, defaultPdfStatus, openAppSettings, openTestPdf, TEST_PDF_NAME } from './platform.js';
 
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 const desktop = window.atelierDesktop;
 if (desktop) document.body.classList.add('is-desktop');
 const isMobile = () => window.innerWidth < 860;
@@ -53,6 +55,8 @@ $('#btnScanWelcome').onclick = () => scanNew();
 if (isTouch) { $('.drop-hint').hidden = true; $('#btnScanWelcome').className = 'btn primary big'; $('#btnOpenWelcome').className = 'btn outline big'; $('#btnScanWelcome').after($('#btnOpenWelcome')); }
 fileInput.onchange = () => { const f = [...fileInput.files]; fileInput.value = ''; if (f.length) handleFiles(f); };
 
+const recentOpened = initRecents(f => handleFiles([f]));
+
 /** Chaque PDF s'ouvre dans son propre onglet ; plusieurs images choisies ensemble forment un seul document. */
 async function handleFiles(files) {
   const pdfs = files.filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
@@ -61,7 +65,12 @@ async function handleFiles(files) {
   const busy = toast('Ouverture…', { duration: 60000 });
   const quiet = groups.length > 1;
   let opened = 0;
-  try { for (const g of groups) if (await openFiles(g, { quiet })) opened++; } finally { busy.remove(); }
+  try {
+    for (const g of groups) if (await openFiles(g, { quiet })) {
+      opened++;
+      if (g.length === 1 && pdfs.includes(g[0])) recentOpened(g[0]).catch(() => {});
+    }
+  } finally { busy.remove(); }
   if (quiet && opened > 1) toast(`${opened} documents ouverts, chacun dans son onglet.`, { duration: 9000, action: { label: 'Les fusionner', fn: openMergeDialog } });
 }
 
@@ -192,6 +201,8 @@ mainMenu.addEventListener('click', async e => {
   if (act === 'print') openPrintDialog();
   if (act === 'images') openImageDialog();
   if (act === 'flat') downloadFlattened();
+  if (act === 'compress') openCompressDialog();
+  if (act === 'recents') openRecentsDialog();
   if (act === 'saveas') savePdf(true);
   if (act === 'newwin') desktop?.newWindow();
   if (act === 'default') defaultReaderDialog();
@@ -209,7 +220,7 @@ function toggleMenu(m) {
 document.addEventListener('pointerdown', e => { if (!e.target.closest('.menu, #btnMenu, #btnAddPages')) $$('.menu').forEach(x => x.hidden = true); });
 
 /* ------------------------------------------------ raccourcis */
-const TOOL_KEYS = { v: 'select', e: 'edit', t: 'text', s: 'sign', c: 'mark', m: 'mask', h: 'highlight' };
+const TOOL_KEYS = { v: 'select', e: 'edit', t: 'text', s: 'sign', c: 'mark', m: 'mask', h: 'highlight', a: 'annot', r: 'redact' };
 document.addEventListener('keydown', e => {
   if (isModalOpen()) return;
   const inField = e.target.closest?.('input, textarea, select, [contenteditable]');
@@ -221,6 +232,7 @@ document.addEventListener('keydown', e => {
   if (mod && k === 'p') { e.preventDefault(); return openPrintDialog(); }
   if (e.key === 'F3' && isSearchOpen()) { e.preventDefault(); return searchStep(e.shiftKey ? -1 : 1); }
   if ((mod && k === 'f') || e.key === 'F3') { e.preventDefault(); return openSearch(); }
+  if (mod && k === 'h') { e.preventDefault(); return openSearch(true); }
   if (e.key === 'Enter' && !inField && !mod && isSearchOpen() && !state.selected) { e.preventDefault(); return searchStep(e.shiftKey ? -1 : 1); }
   if (mod && k === 'w') { e.preventDefault(); return closeTab(); }
   if (mod && e.key === 'Tab') { e.preventDefault(); return cycle(e.shiftKey ? -1 : 1); }
@@ -401,14 +413,16 @@ function defaultReaderDialog() {
 function showHelp() {
   const keys = [
     ['Ctrl + O', 'Ouvrir un PDF ou une image'], ['Ctrl + S', desktop ? 'Enregistrer (Ctrl + Maj + S : enregistrer sous)' : 'Télécharger le PDF modifié'], ['Ctrl + P', 'Choisir les pages et imprimer'],
-    ['Ctrl + Z / Ctrl + Y', 'Annuler / rétablir'], ['Ctrl + F', 'Rechercher dans le document (Entrée : résultat suivant)'], ['Ctrl + Tab', 'Onglet suivant (Ctrl + W : fermer l\'onglet)'], ['Suppr', 'Effacer l\'élément sélectionné'], ['Flèches', 'Déplacer l\'élément (Maj : plus vite)'],
+    ['Ctrl + Z / Ctrl + Y', 'Annuler / rétablir'], ['Ctrl + F', 'Rechercher dans le document (Entrée : résultat suivant)'], ['Ctrl + H', 'Rechercher et remplacer'], ['Ctrl + Tab', 'Onglet suivant (Ctrl + W : fermer l\'onglet)'], ['Suppr', 'Effacer l\'élément sélectionné'], ['Flèches', 'Déplacer l\'élément (Maj : plus vite)'],
     ['Ctrl + D', 'Dupliquer l\'élément'], ['Ctrl + molette', 'Zoomer'], ['Échap', 'Désélectionner'],
-    ['V E T S C M H', 'Sélection, Modifier le texte, Texte, Signer, Cocher, Masquer, Surligner'],
+    ['V E T S C M R H A', 'Sélection, Modifier le texte, Texte, Signer, Cocher, Masquer, Caviarder, Surligner, Annoter'],
   ];
   modal({ title: 'Aide', width: 600, body: [
     h('div', { class: 'prose' },
       h('p', {}, h('b', {}, 'Corriger un texte : '), 'choisissez « Modifier le texte », puis cliquez sur le paragraphe. Pour un scan ou une photo, cliquez sur « Lire le texte de cette page ».'),
       h('p', {}, h('b', {}, 'Remplir un formulaire : '), 'les champs prévus dans le PDF apparaissent en bleu clair. Sinon, utilisez « Ajouter du texte » et « Cocher ».'),
+      h('p', {}, h('b', {}, 'Cacher une information : '), '« Caviarder » pose un bandeau noir et supprime vraiment le texte dessous à l\'enregistrement (la page devient une image). « Masquer » ne fait que recouvrir.'),
+      h('p', {}, h('b', {}, 'Annoter : '), 'flèches, cercles, traits, notes et tampons (« Lu et approuvé », « Urgent », « Reçu le… »).'),
       h('p', {}, h('b', {}, 'Pages : '), 'faites glisser les miniatures pour les réordonner ; cochez-les pour les pivoter, dupliquer, supprimer ou les télécharger seules.')),
     h('dl', { class: 'kbd-list' }, ...keys.flatMap(([a, b]) => [h('dt', {}, h('kbd', {}, a)), h('dd', {}, b)])),
   ] });

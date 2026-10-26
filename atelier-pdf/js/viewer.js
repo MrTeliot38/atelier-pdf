@@ -276,13 +276,19 @@ export function renderObjects(pageId) {
       const { lines, widths } = layoutText(o);
       o.h = Math.max(textBoxHeight(o, lines.length), o.minH || 0);
       if (o.origin === 'edit') el.classList.add('is-edited-mark');
+      if (o.bg) { el.style.background = o.bg; el.style.boxShadow = `0 0 0 ${4 * z}px ${o.bg}, 0 ${4 * z}px ${10 * z}px ${4 * z}px rgba(0,0,0,.18)`; el.classList.add('note'); }
       if (state.editing === o.id) el.append(textEditor(o));
       else el.append(textSvg(o, lines, widths));
     } else if (o.type === 'image') {
       const a = state.assets.get(o.asset);
       el.append(h('img', { src: a?.dataUrl || '', alt: '', draggable: 'false' }));
-    } else if (o.type === 'rect') {
+    } else if (o.type === 'rect' || o.type === 'redact') {
       el.style.background = o.color;
+    } else if (o.type === 'shape') {
+      el.append(shapeSvg(o, z));
+    } else if (o.type === 'stamp') {
+      Object.assign(el.style, { color: o.color, borderColor: o.color, fontSize: o.h * 0.48 * z + 'px', borderWidth: Math.max(1.5, o.h * 0.075 * z) + 'px' });
+      el.append(h('span', {}, o.text));
     } else if (o.type === 'highlight') {
       el.style.background = o.color; el.style.opacity = o.opacity ?? 0.45;
     } else if (o.type === 'mark') {
@@ -292,14 +298,54 @@ export function renderObjects(pageId) {
     box(el, o);
     if (state.selected === o.id && state.editing !== o.id) {
       el.classList.add('is-selected');
-      const hs = o.type === 'text' ? ['w', 'e'] : ['nw', 'ne', 'sw', 'se'];
-      for (const k of hs) el.append(h('span', { class: 'handle', 'data-h': k }));
+      if (o.type === 'shape' && (o.shape === 'arrow' || o.shape === 'line')) {
+        // trait, flèche : une poignée à chaque extrémité
+        const ax = (o.fx ? o.w : 0) * z, ay = (o.fy ? o.h : 0) * z, bx = (o.fx ? 0 : o.w) * z, by = (o.fy ? 0 : o.h) * z;
+        el.append(h('span', { class: 'handle end', 'data-h': 'p1', style: { left: ax - 8 + 'px', top: ay - 8 + 'px' } }),
+          h('span', { class: 'handle end', 'data-h': 'p2', style: { left: bx - 8 + 'px', top: by - 8 + 'px' } }));
+      } else {
+        const hs = o.type === 'text' ? ['w', 'e'] : ['nw', 'ne', 'sw', 'se'];
+        for (const k of hs) el.append(h('span', { class: 'handle', 'data-h': k }));
+      }
     }
     frag.append(el);
   }
   s.objs.replaceChildren(frag);
   const ta = s.objs.querySelector('textarea.editor');
   if (ta) { autoGrow(ta); if (document.activeElement !== ta) { ta.focus({ preventScroll: true }); ta.setSelectionRange(ta.value.length, ta.value.length); } }
+}
+
+/** Dessin d'une forme (flèche, trait, rectangle, ellipse), en pixels à l'échelle z. */
+export function shapeSvg(o, z) {
+  const NS = 'http://www.w3.org/2000/svg';
+  const W = o.w * z, H = o.h * z, sw = Math.max(1, o.width * z);
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('width', Math.max(1, W)); svg.setAttribute('height', Math.max(1, H));
+  svg.setAttribute('class', 'shape-svg');
+  const el = (tag, attrs) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); svg.append(n); return n; };
+  const stroke = { stroke: o.color, 'stroke-width': sw, fill: 'none', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' };
+  if (o.shape === 'arrow' || o.shape === 'line') {
+    const x1 = o.fx ? W : 0, y1 = o.fy ? H : 0, x2 = o.fx ? 0 : W, y2 = o.fy ? 0 : H;
+    // zone de saisie plus large que le trait
+    el('line', { x1, y1, x2, y2, stroke: 'transparent', 'stroke-width': Math.max(16, sw + 12), class: 'hit' });
+    if (o.shape === 'arrow') {
+      const { tip, left, right, back } = arrowHead(x1, y1, x2, y2, sw);
+      el('line', { x1, y1, x2: back.x, y2: back.y, ...stroke });
+      el('polygon', { points: `${tip.x},${tip.y} ${left.x},${left.y} ${right.x},${right.y}`, fill: o.color, stroke: o.color, 'stroke-width': sw * 0.6, 'stroke-linejoin': 'round' });
+    } else el('line', { x1, y1, x2, y2, ...stroke });
+  } else if (o.shape === 'rect') {
+    el('rect', { x: sw / 2, y: sw / 2, width: Math.max(0, W - sw), height: Math.max(0, H - sw), rx: sw, ...stroke });
+  } else if (o.shape === 'ellipse') {
+    el('ellipse', { cx: W / 2, cy: H / 2, rx: Math.max(0, W / 2 - sw / 2), ry: Math.max(0, H / 2 - sw / 2), ...stroke });
+  }
+  return svg;
+}
+/** Pointe de flèche (mêmes calculs à l'écran et dans le PDF). */
+export function arrowHead(x1, y1, x2, y2, sw) {
+  const len = Math.hypot(x2 - x1, y2 - y1) || 1, ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+  const L = Math.min(len * 0.6, Math.max(9, sw * 4.2)), Wd = L * 0.62;
+  const bx = x2 - ux * L, by = y2 - uy * L;
+  return { tip: { x: x2, y: y2 }, left: { x: bx - uy * Wd, y: by + ux * Wd }, right: { x: bx + uy * Wd, y: by - ux * Wd }, back: { x: x2 - ux * L * 0.7, y: y2 - uy * L * 0.7 } };
 }
 
 function textSvg(o, lines, widths) {

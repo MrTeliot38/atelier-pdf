@@ -711,3 +711,66 @@ body.typing .pages { padding-bottom: 70vh; }
   .search-row { flex-wrap: nowrap; padding-left: 10px; }
   .search-exact { display: none; }
 }
+.search-rep { border-top: 1px solid var(--line); }
+.search-rep-ico { display: grid; place-items: center; color: var(--muted); }
+.search-rep .btn { flex: none; }
+@media (max-width: 600px) { .search-rep { flex-wrap: wrap; } .search-rep .search-input { flex-basis: calc(100% - 40px); } }
+
+/* ---------- Réduire la taille ---------- */
+.compress-levels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.compress-level { display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 10px 12px; border: 1.5px solid var(--line); border-radius: var(--radius-m); background: var(--surface); cursor: pointer; }
+.compress-level small { color: var(--muted); font-size: 12.5px; line-height: 1.3; }
+.compress-level[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.compress-result p { margin: 0; }
+@media (max-width: 600px) { .compress-levels { grid-template-columns: 1fr; } }
+
+/* ---------- Caviardage, formes, tampons, notes ---------- */
+body.tool-redact .page, body.tool-annot .page { cursor: crosshair; }
+body.tool-redact .page, body.tool-annot .page { touch-action: none; }
+.obj.redact { background-image: repeating-linear-gradient(-45deg, transparent 0 6px, rgba(255,255,255,.07) 6px 12px); }
+.obj.shape { overflow: visible; }
+.obj.shape .shape-svg { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.obj.shape .shape-svg * { pointer-events: visiblePainted; }
+.obj.shape .shape-svg .hit { pointer-events: stroke; }
+/* une forme ne se saisit que par son trait (on peut cliquer « au travers » d'un cadre) */
+.layer-objects > .obj.shape { pointer-events: none; }
+.obj.shape .handle { pointer-events: auto; }
+.obj.shape.is-selected { outline: 1.5px dashed var(--accent); outline-offset: 6px; }
+.ghost-shape { pointer-events: none; opacity: .75; }
+.obj .handle.end { width: 16px; height: 16px; border-radius: 50%; cursor: move; right: auto; bottom: auto; }
+.obj.stamp { display: grid; place-items: center; border-style: solid; border-radius: 5px; font-family: Helvetica, Arial, sans-serif; font-weight: 700; letter-spacing: .02em; white-space: nowrap; opacity: .92; line-height: 1; }
+.obj.text.note { border-radius: 1px; }
+.annot-kinds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.annot-kind { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px; border: 1.5px solid var(--line); border-radius: var(--radius-m); background: var(--surface); cursor: pointer; font-size: 12.5px; }
+.annot-kind[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.stamp-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.stamp-pick { border: 2px solid; border-radius: 5px; background: var(--surface); font: 700 12px Helvetica, Arial, sans-serif; padding: 5px 8px; cursor: pointer; letter-spacing: .02em; }
+.stamp-pick.on { box-shadow: 0 0 0 2px var(--accent); }
+
+/* ---------- Accueil : fichiers récents ---------- */
+.recents { margin: 22px auto 0; text-align: left; width: min(420px, 100%); }
+.recents-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 6px; }
+.recents-head h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0; margin-right: auto; font-weight: 700; }
+.recents-head .linklike { font-size: 13px; }
+.recent-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.recent { display: flex; align-items: center; border-radius: 10px; }
+.recent:hover, .recent:focus-within { background: var(--chrome-2); }
+.recent-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 7px 8px; background: none; border: 0; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 10px; }
+.recent-thumb { width: 38px; height: 50px; flex: none; object-fit: cover; object-position: top; border-radius: 4px; background: #fff; box-shadow: 0 0 0 1px var(--line); }
+.recent-thumb.none { display: grid; place-items: center; color: var(--muted); }
+.recent-thumb.none svg { width: 20px; height: 20px; }
+.recent-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.recent-text b { font-weight: 600; font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent-text small { color: var(--muted); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent.missing .recent-thumb, .recent.missing b { opacity: .5; }
+.recent-x { flex: none; opacity: .55; margin-right: 4px; }
+.recent:hover .recent-x, .recent-x:focus-visible { opacity: 1; }
+.recent-list.in-dialog { max-height: 60vh; overflow: auto; margin: -4px -8px 0; }
+@media (max-width: 600px) {
+  /* sur téléphone, les fichiers récents passent avant l'illustration */
+  .welcome-card.has-recents .welcome-art { display: none; }
+  .welcome-card.has-recents .lead { margin-bottom: 18px; }
+  .recent-x { opacity: 1; }
+  .recent-open { padding: 9px 8px; }
+}
+@media (pointer: coarse) { .recent-x { opacity: 1; } }

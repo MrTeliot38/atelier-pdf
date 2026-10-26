@@ -14,6 +14,20 @@ const T = (mouse, finger) => touch ? finger : mouse;
 let key = '';
 const INK = ['#111111', '#ffffff', '#c2362f', '#2446c9', '#2f7d4f', '#e8772e'];
 const HL = ['#ffe14d', '#8ef0a0', '#8fd3ff', '#ffa6d2'];
+const NOTE = ['#fff3a0', '#c8f2c2', '#cfe6ff', '#ffd6e7'];
+const ANNOT_INK = ['#c2362f', '#2446c9', '#111111', '#2f7d4f', '#e8772e'];
+const STAMPS = ['LU ET APPROUVÉ', 'URGENT', 'VALIDÉ', 'REÇU LE {date}', 'COPIE', 'CONFIDENTIEL', 'BROUILLON', 'PAYÉ'];
+const SHAPES = [
+  { v: 'arrow', t: 'Flèche', i: '<path d="M4 20L19 5"/><path d="M10 5h9v9"/>' },
+  { v: 'line', t: 'Trait', i: '<path d="M4 20L20 4"/>' },
+  { v: 'rect', t: 'Rectangle', i: '<rect x="3.5" y="6" width="17" height="12" rx="1.5"/>' },
+  { v: 'ellipse', t: 'Cercle', i: '<ellipse cx="12" cy="12" rx="9" ry="7"/>' },
+  { v: 'note', t: 'Note', i: '<path d="M4 4h16v11l-5 5H4z"/><path d="M15 20v-5h5"/>' },
+  { v: 'stamp', t: 'Tampon', i: '<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 12h10"/>' },
+];
+const WIDTHS = [{ v: 1.5, l: 'Fin' }, { v: 2.5, l: 'Moyen' }, { v: 4, l: 'Épais' }];
+const stampText = t => t.replace('{date}', todayFr());
+export function stampWidth(text, h) { const c = document.createElement('canvas').getContext('2d'); c.font = `bold ${h * 0.48}px Helvetica, Arial, sans-serif`; return Math.max(40, c.measureText(text).width + h * 0.95); }
 
 export function initInspector() {
   on('selection', () => render());
@@ -171,7 +185,8 @@ function objectPanel(o, page) {
   const out = [];
   if (o.type === 'text') {
     out.push(h('h2', {}, o.origin === 'edit' ? 'Texte corrigé' : 'Texte'));
-    if (o.origin === 'edit') out.push(h('p', { class: 'help' }, 'Le texte d\'origine est recouvert par un fond de la couleur détectée, puis réécrit.'));
+    if (o.origin === 'edit') out.push(h('p', { class: 'help' }, 'Le texte d\'origine est effacé en conservant le fond, puis réécrit.'));
+    if (o.bg) out.push(field('Couleur de la note', swatches(NOTE, o.bg, c => up({ bg: c }))));
     out.push(field('Police', fontSelect(o.font, v => up({ font: v }))));
     if (o.fontGuesses?.length) {
       const cur = STD_FONTS[o.font] ? STD_FONTS[o.font].label : state.fonts.get(o.font)?.name;
@@ -198,8 +213,8 @@ function objectPanel(o, page) {
     out.push(field('Interligne', sizeInput(o.lineHeight, v => up({ lineHeight: v }), { min: 0.7, max: 3, step: 0.05, unit: '' })));
     out.push(field('Couleur du texte', swatches(INK, o.color, c => up({ color: c }))));
     if (o.cover) {
-      out.push(field('Couleur du fond de masquage', swatches(['#ffffff'], o.cover.color, c => up({ cover: { ...o.cover, color: c } })),
-        h('button', { class: 'btn small outline', type: 'button', onclick: async () => { const { bg } = await sampleColors(page, o.cover); up({ cover: { ...o.cover, color: bg } }); } }, svgIcon(ICONS.pipette), 'Reprendre la couleur du fond')));
+      out.push(field('Fond sous le texte', swatches(['#ffffff'], o.cover.img ? null : o.cover.color, c => up({ cover: { ...o.cover, color: c, img: undefined } })),
+        h('button', { class: 'btn small outline', type: 'button', onclick: async () => { const { bg } = await sampleColors(page, o.cover); up({ cover: { ...o.cover, color: bg, img: undefined } }); } }, svgIcon(ICONS.pipette), 'Couleur unie du fond')));
     }
     actions.append(actionBtn(ICONS.font, 'Modifier le texte', () => startEditing(o.id)));
     actions.append(actionBtn(ICONS.copy, 'Dupliquer', () => duplicateObject(o.id)));
@@ -218,6 +233,28 @@ function objectPanel(o, page) {
     actions.append(actionBtn(ICONS.pages, sig ? 'Parapher toutes les pages' : 'Copier sur toutes les pages', () => copyToAllPages(o.id)));
     if (lifted) actions.append(actionBtn(ICONS.restore, 'Remettre à sa place d\'origine', () => removeObject(o.id, true, { restore: true })));
     actions.append(actionBtn(ICONS.trash, lifted ? 'Supprimer l\'image' : 'Supprimer', () => removeObject(o.id), 'danger'));
+  } else if (o.type === 'redact') {
+    out.push(h('h2', {}, 'Zone caviardée'));
+    out.push(h('p', { class: 'help' }, 'À l\'enregistrement, la page est convertie en image : le texte et les images situés sous cette zone sont définitivement effacés du fichier.'));
+    out.push(field('Couleur', swatches(['#000000', '#ffffff'], o.color, c => up({ color: c }))));
+    actions.append(actionBtn(ICONS.copy, 'Dupliquer', () => duplicateObject(o.id)));
+    actions.append(actionBtn(ICONS.trash, 'Supprimer', () => removeObject(o.id), 'danger'));
+  } else if (o.type === 'shape') {
+    out.push(h('h2', {}, SHAPES.find(x => x.v === o.shape)?.t || 'Forme'));
+    out.push(field('Couleur', swatches(ANNOT_INK, o.color, c => { state.annot.color = c; up({ color: c }); })));
+    out.push(field('Épaisseur', seg(WIDTHS.map(x => ({ v: x.v, l: x.l })), o.width, v => { state.annot.width = v; up({ width: v }); }, 'Épaisseur')));
+    if (o.shape === 'arrow') actions.append(actionBtn(ICONS.swap, 'Inverser le sens', () => up({ fx: !o.fx, fy: !o.fy })));
+    actions.append(actionBtn(ICONS.copy, 'Dupliquer', () => duplicateObject(o.id)));
+    actions.append(actionBtn(ICONS.trash, 'Supprimer', () => removeObject(o.id), 'danger'));
+  } else if (o.type === 'stamp') {
+    out.push(h('h2', {}, 'Tampon'));
+    const inp = h('input', { class: 'input', value: o.text, 'aria-label': 'Texte du tampon', style: { width: '100%' } });
+    inp.addEventListener('change', () => { const t = inp.value.trim().toUpperCase() || o.text; up({ text: t, w: stampWidth(t, o.h) }); });
+    out.push(field('Texte', inp));
+    out.push(field('Couleur', swatches(ANNOT_INK, o.color, c => { state.annot.color = c; up({ color: c }); })));
+    actions.append(actionBtn(ICONS.copy, 'Dupliquer', () => duplicateObject(o.id)));
+    actions.append(actionBtn(ICONS.pages, 'Copier sur toutes les pages', () => copyToAllPages(o.id)));
+    actions.append(actionBtn(ICONS.trash, 'Supprimer', () => removeObject(o.id), 'danger'));
   } else if (o.type === 'rect') {
     out.push(h('h2', {}, 'Zone masquée'));
     out.push(field('Couleur', swatches(['#ffffff', '#111111'], o.color, c => up({ color: c })),
@@ -350,7 +387,29 @@ function toolPanel(tool) {
       h('p', { class: 'help' }, 'Il s\'agit d\'une signature visuelle, comme une signature scannée. Elle convient à la plupart des documents internes.'),
     ];
   }
-  if (tool === 'mask') return [h('h2', {}, 'Masquer'), h('p', { class: 'help' }, 'Tracez un rectangle sur la zone à cacher. Sa couleur reprend celle du fond ; changez-la ensuite si besoin.'), h('p', { class: 'help' }, 'Attention : le masque cache le contenu à l\'œil, mais le texte reste présent dans le fichier (copier-coller, recherche). Pour une information confidentielle, utilisez le menu ⋮ puis « Télécharger un PDF aplati ».')];
+  if (tool === 'redact') return [h('h2', {}, 'Caviarder'),
+    h('p', { class: 'help' }, T('Tracez un rectangle', 'Tracez du doigt un rectangle') + ' sur chaque information à faire disparaître (nom, adresse, montant…).'),
+    h('p', { class: 'help' }, 'À l\'enregistrement, au partage ou à l\'impression, les pages caviardées sont converties en image : ce qui se trouve sous les zones noires est définitivement effacé du fichier (impossible à retrouver par copier-coller ou recherche). Les autres pages ne changent pas.')];
+  if (tool === 'annot') {
+    const A = state.annot;
+    const kinds = h('div', { class: 'annot-kinds', role: 'radiogroup', 'aria-label': 'Type d\'annotation' }, ...SHAPES.map(x => h('button', { type: 'button', class: 'annot-kind', role: 'radio', 'aria-checked': A.kind === x.v, title: x.t,
+      onclick: () => { A.kind = x.v; render(true); } }, svgIcon(x.i), h('span', {}, x.t))));
+    const out = [h('h2', {}, 'Annoter'), kinds];
+    const how = { note: T('Cliquez', 'Touchez') + ' l\'endroit où poser la note, puis écrivez.', stamp: T('Cliquez', 'Touchez') + ' l\'endroit où poser le tampon.' }[A.kind]
+      || T('Tracez la forme en faisant glisser la souris. Un simple clic pose une forme de taille standard.', 'Tracez la forme du doigt.');
+    out.push(h('p', { class: 'help' }, how));
+    if (A.kind === 'stamp') {
+      out.push(field('Tampon', h('div', { class: 'stamp-list' }, ...STAMPS.map(t => h('button', { type: 'button', class: 'stamp-pick' + (stampText(t) === A.stamp ? ' on' : ''), style: { color: A.color, borderColor: A.color },
+        onclick: () => { A.stamp = stampText(t); render(true); } }, stampText(t))))));
+      const inp = h('input', { class: 'input', placeholder: 'Autre texte…', 'aria-label': 'Texte personnalisé', style: { width: '100%' } });
+      inp.addEventListener('change', () => { if (inp.value.trim()) { A.stamp = inp.value.trim().toUpperCase(); render(true); } });
+      out.push(inp);
+    }
+    if (A.kind !== 'note') out.push(field('Couleur', swatches(ANNOT_INK, A.color, c => { A.color = c; render(true); })));
+    if (['arrow', 'line', 'rect', 'ellipse'].includes(A.kind)) out.push(field('Épaisseur', seg(WIDTHS.map(x => ({ v: x.v, l: x.l })), A.width, v => { A.width = v; }, 'Épaisseur')));
+    return out;
+  }
+  if (tool === 'mask') return [h('h2', {}, 'Masquer'), h('p', { class: 'help' }, 'Tracez un rectangle sur la zone à cacher. Sa couleur reprend celle du fond ; changez-la ensuite si besoin.'), h('p', { class: 'help' }, 'Attention : le masque cache le contenu à l\'œil, mais le texte reste présent dans le fichier (copier-coller, recherche). Pour une information confidentielle, utilisez plutôt l\'outil « Caviarder ».')];
   if (tool === 'highlight') return [h('h2', {}, 'Surligner'), h('p', { class: 'help' }, 'Tracez un rectangle sur le passage à mettre en évidence.')];
   return null;
 }

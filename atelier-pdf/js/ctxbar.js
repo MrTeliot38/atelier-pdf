@@ -14,8 +14,10 @@ const TOOLS = {
   sign: ['Signer', 'Touchez l\'endroit où signer'],
   mask: ['Masquer', 'Tracez un rectangle avec le doigt'],
   highlight: ['Surligner', 'Tracez un rectangle avec le doigt'],
+  redact: ['Caviarder', 'Tracez un rectangle sur l\'information à effacer'],
+  annot: ['Annoter', 'Flèche, forme, note ou tampon : voir les réglages en bas'],
 };
-const TYPE = { text: 'Texte', image: 'Image', mark: 'Coche', rect: 'Masque', highlight: 'Surlignage', erase: 'Zone effacée' };
+const TYPE = { text: 'Texte', image: 'Image', mark: 'Coche', rect: 'Masque', highlight: 'Surlignage', erase: 'Zone effacée', redact: 'Zone caviardée', shape: 'Forme', stamp: 'Tampon' };
 const IC = {
   done: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',

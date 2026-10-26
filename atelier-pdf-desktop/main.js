@@ -29,6 +29,25 @@ const allow = p => { if (typeof p === 'string' && p) allowedPaths.add(path.resol
 const isAllowed = p => typeof p === 'string' && allowedPaths.has(path.resolve(p));
 const okFile = p => typeof p === 'string' && /\.(pdf|png|jpe?g|webp)$/i.test(p) && fs.existsSync(p);
 
+/* ---------------- fichiers récents ---------------- */
+// Liste gardée dans le dossier de l'application (chemins seulement, jamais de copie des documents)
+const RECENT_MAX = 12;
+const recentFile = () => path.join(app.getPath('userData'), 'recents.json');
+let recents = null;
+function loadRecents() {
+  if (recents) return recents;
+  try { recents = JSON.parse(fs.readFileSync(recentFile(), 'utf8')).filter(r => r && typeof r.path === 'string'); } catch { recents = []; }
+  return recents;
+}
+function saveRecents() { fs.promises.writeFile(recentFile(), JSON.stringify(recents)).catch(() => {}); }
+function addRecent(p) {
+  if (typeof p !== 'string' || !/\.pdf$/i.test(p)) return;
+  const full = path.resolve(p);
+  loadRecents();
+  recents = [{ path: full, name: path.basename(full), at: Date.now() }, ...recents.filter(r => path.resolve(r.path) !== full)].slice(0, RECENT_MAX);
+  saveRecents();
+}
+
 /* ---------------- fenêtres : une par document ---------------- */
 const wins = new Map(); // webContents.id -> { win, ready, queue: [], dirty, hasDoc }
 const fileArgs = argv => argv.slice(1).filter(a => !a.startsWith('-') && /\.(pdf|png|jpe?g|webp)$/i.test(a) && fs.existsSync(a));
@@ -36,7 +55,7 @@ const firstFiles = fileArgs(process.argv);
 
 function infoOf(sender) { return wins.get(sender.id); }
 function sendFile(info, p) {
-  allow(p);
+  allow(p); addRecent(p);
   if (!info.ready) { info.queue.push(p); return; }
   fs.promises.readFile(p).then(data => info.win.webContents.send('open-file', { name: path.basename(p), path: p, data })).catch(() => {});
   info.hasDoc = true;
@@ -154,7 +173,17 @@ ipcMain.handle('fonts:read', guard(async (_e, p) => {
 ipcMain.on('dirty', guardOn((e, d) => { const i = infoOf(e.sender); if (i) i.dirty = !!d; }));
 ipcMain.on('has-doc', guardOn((e, d) => { const i = infoOf(e.sender); if (i) i.hasDoc = !!d; }));
 ipcMain.on('renderer-ready', guardOn(e => { const i = infoOf(e.sender); if (!i) return; i.ready = true; i.queue.splice(0).forEach(p => sendFile(i, p)); }));
-ipcMain.on('allow-path', guardOn((_e, p) => { if (okFile(p)) allow(p); }));
+ipcMain.on('allow-path', guardOn((_e, p) => { if (okFile(p)) { allow(p); addRecent(p); } }));
+ipcMain.handle('recent:list', guard(async () => loadRecents().map(r => ({ ...r, exists: fs.existsSync(r.path) }))));
+ipcMain.handle('recent:open', guard(async (_e, p) => {
+  const r = loadRecents().find(x => x.path === p);
+  if (!r || !okFile(r.path) || !fs.existsSync(r.path)) return false;
+  const info = wins.get(_e.sender.id);
+  if (info) sendFile(info, r.path); else openFromSystem([r.path]);
+  return true;
+}));
+ipcMain.handle('recent:remove', guard(async (_e, p) => { recents = loadRecents().filter(x => x.path !== p); saveRecents(); return true; }));
+ipcMain.handle('recent:clear', guard(async () => { recents = []; saveRecents(); return true; }));
 ipcMain.on('new-window', guardOn(() => createWindow()));
 ipcMain.on('open-paths', guardOn((_e, paths) => openFromSystem((Array.isArray(paths) ? paths : []).filter(okFile))));
 
@@ -173,7 +202,7 @@ ipcMain.handle('file:saveAs', guard(async (e, name, bytes, current) => {
   if (r.canceled || !r.filePath) return null;
   const out = /\.pdf$/i.test(r.filePath) ? r.filePath : r.filePath + '.pdf';
   await fs.promises.writeFile(out, Buffer.from(bytes));
-  allow(out);
+  allow(out); addRecent(out);
   return out;
 }));
 ipcMain.handle('file:reveal', guard((_e, p) => { if ((isAllowed(p) || inShareDir(p)) && fs.existsSync(p)) shell.showItemInFolder(p); }));

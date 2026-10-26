@@ -185,6 +185,6 @@ export function releaseSources(keepPages) {
 export function closeDocument() {
   state.sources.forEach(s => s.task?.destroy());
   state.sources.clear(); state.pages = []; state.assets.clear(); state.formValues = {}; state.formOriginal = {};
-  state.selected = null; state.editing = null; state.selectedPages.clear(); state.docName = ''; state.filePath = null;
+  state.selected = null; state.editing = null; state.selectedPages.clear(); state.docName = ''; state.filePath = null; state.recentId = null;
   emit('doc-closed'); resetHistory();
 }

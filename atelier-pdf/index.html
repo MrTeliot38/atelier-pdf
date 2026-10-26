@@ -53,8 +53,10 @@
     <button role="menuitem" data-act="print" class="only-doc mobile-only">Imprimer…</button>
     <button role="menuitem" data-act="images" class="only-doc mobile-only">Exporter en images (JPG, PNG)…</button>
     <button role="menuitem" data-act="install" hidden>Installer l'application</button>
+    <button role="menuitem" data-act="recents" class="only-doc">Fichiers récents…</button>
     <button role="menuitem" data-act="merge" class="only-doc">Fusionner des PDF…</button>
     <button role="menuitem" data-act="saveas" class="only-doc desktop-only" hidden>Enregistrer sous…</button>
+    <button role="menuitem" data-act="compress" class="only-doc">Réduire la taille du PDF…</button>
     <button role="menuitem" data-act="flat" class="only-doc">Télécharger un PDF aplati (sans texte caché)</button>
     <button role="menuitem" data-act="close" class="only-doc">Fermer l'onglet</button>
     <button role="menuitem" data-act="newwin" class="desktop-only" hidden>Nouvelle fenêtre</button>
@@ -73,7 +75,9 @@
   <button class="tool" data-tool="sign" title="Signer (S)"><svg viewBox="0 0 24 24"><path d="M3 17c3-1 4-9 6-9s-1 9 2 9 3-5 5-5 1 4 3 4 2-1 2-1"/><path d="M3 21h18"/></svg><span>Signer</span></button>
   <button class="tool" data-tool="mark" title="Cocher une case (C)"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7.5 12.5l3 3 6-7"/></svg><span>Cocher</span></button>
   <button class="tool" data-tool="mask" title="Masquer une zone (M)"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="1.5" fill="currentColor" fill-opacity=".18"/><path d="M7 10h10M7 14h6"/></svg><span>Masquer</span></button>
+  <button class="tool" data-tool="redact" title="Caviarder : effacer définitivement une information (R)"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="5" rx="1" fill="currentColor"/><path d="M3 16h7M13 16h8"/></svg><span>Caviarder</span></button>
   <button class="tool" data-tool="highlight" title="Surligner (H)"><svg viewBox="0 0 24 24"><path d="M4 20h7"/><path d="M14 4l6 6-8 8H8v-4z"/></svg><span>Surligner</span></button>
+  <button class="tool" data-tool="annot" title="Flèches, formes, notes et tampons (A)"><svg viewBox="0 0 24 24"><path d="M4 20L14 10"/><path d="M9 10h5v5"/><circle cx="17.5" cy="6.5" r="3.5"/></svg><span>Annoter</span></button>
   <button class="tool" data-tool="image" title="Insérer une image"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></svg><span>Image</span></button>
 </nav>
 
@@ -128,6 +132,10 @@
       <div class="welcome-actions">
         <button class="btn primary big" id="btnOpenWelcome"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Ouvrir un PDF ou une image</button>
         <button class="btn outline big" id="btnScanWelcome"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>Scanner un document</button>
+      </div>
+      <div class="recents" id="recents" hidden>
+        <div class="recents-head"><h2>Récents</h2><button class="linklike" type="button" data-recents-all hidden>Tout voir</button><button class="linklike" type="button" data-recents-clear>Effacer la liste</button></div>
+        <ul class="recent-list"></ul>
       </div>
       <p class="drop-hint">ou déposez le fichier ici</p>
       <p class="default-hint desktop-only" id="defaultHint" hidden><button class="linklike" type="button" data-act-default>Ouvrir mes PDF avec Atelier PDF par défaut</button></p>

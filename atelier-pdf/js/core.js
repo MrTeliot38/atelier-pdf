@@ -32,6 +32,8 @@ export const state = {
   dirty: false,
   textMode: 'paragraph',
   markKind: 'check',
+  // annotations : forme choisie, couleur, épaisseur, texte du tampon
+  annot: { kind: 'arrow', color: '#c2362f', width: 2.5, stamp: 'LU ET APPROUVÉ' },
   pendingSignature: null, // { asset, w, h, target? }
   textDefaults: { font: 'helvetica', size: 11, color: '#111111', bold: false, italic: false, align: 'left', lineHeight: 1.2 },
 };

@@ -1,5 +1,6 @@
 // Fabrication du PDF final, impression des pages choisies, export en images
-import { state, PDFLib, fontkit, pdfjsLib, PDFJS_OPTS, h, toast, downloadBlob, layoutText, ASC, pdfColor, mul, inv, sanitize, sleep, fmtPages, STD_FONTS, customVariant, variantKey } from './core.js';
+import { arrowHead } from './viewer.js';
+import { state, emit, PDFLib, fontkit, pdfjsLib, PDFJS_OPTS, h, toast, downloadBlob, layoutText, ASC, pdfColor, mul, inv, sanitize, sleep, fmtPages, STD_FONTS, customVariant, variantKey } from './core.js';
 import { modal, pagePicker, summaryText } from './ui.js';
 import { facesFromBytes } from './fontnames.js';
 import { thumbFor } from './pagesPanel.js';
@@ -71,7 +72,39 @@ export async function buildPdf(pageIds = null, onProgress) {
   }
   out.setProducer('Atelier PDF');
   out.setModificationDate(new Date());
-  return out.save({ useObjectStreams: true });
+  const bytes = await out.save({ useObjectStreams: true });
+  // caviardage : les pages concernées deviennent des images, rien ne subsiste sous les zones noires
+  const redacted = pages.map((p, i) => p.objects.some(o => o.type === 'redact') ? i : -1).filter(i => i >= 0);
+  return redacted.length ? flattenPages(bytes, redacted) : bytes;
+}
+
+/** Remplace les pages indiquées par leur image (texte, images et champs d'origine supprimés). */
+async function flattenPages(bytes, indexes) {
+  const task = pdfjsLib.getDocument({ ...PDFJS_OPTS, data: bytes.slice() });
+  const pdf = await task.promise;
+  const doc = await PDFDocument.load(bytes, { updateMetadata: false });
+  // champs de formulaire de ces pages : supprimés (leur contenu resterait lisible dans le fichier)
+  try {
+    const form = doc.getForm(), refs = new Set(indexes.map(i => doc.getPage(i).ref.toString()));
+    for (const f of form.getFields()) {
+      const onPage = f.acroField.getWidgets().some(w => { const p = w.P(); return p && refs.has(p.toString()); });
+      if (onPage) form.removeField(f);
+    }
+  } catch (e) { console.warn('Champs', e); }
+  for (const i of indexes) {
+    const page = await pdf.getPage(i + 1);
+    const vp1 = page.getViewport({ scale: 1 }), vp = page.getViewport({ scale: 220 / 72 });
+    const c = document.createElement('canvas'); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+    const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+    await page.render({ canvas: c, viewport: vp, annotationMode: pdfjsLib.AnnotationMode.ENABLE }).promise;
+    const jpg = await doc.embedJpg(await (await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9))).arrayBuffer());
+    c.width = c.height = 0;
+    doc.removePage(i);
+    const np = doc.insertPage(i, [vp1.width, vp1.height]);
+    np.drawImage(jpg, { x: 0, y: 0, width: vp1.width, height: vp1.height });
+  }
+  task.destroy();
+  return doc.save({ useObjectStreams: true });
 }
 
 function fillForm(doc, src) {
@@ -150,6 +183,7 @@ async function drawObjects(out, pg, p, view, fontCache, imgCache) {
   }
   for (const o of p.objects) {
     if (o.type === 'text') {
+      if (o.bg) pg.drawRectangle({ x: o.x - 4, y: H - o.y - o.h - 4, width: o.w + 8, height: o.h + 8, color: pdfColor(o.bg), borderWidth: 0 });
       const font = await getFont(out, o, fontCache);
       const { lines, widths } = layoutText(o);
       lines.forEach((ln, i) => {
@@ -161,8 +195,29 @@ async function drawObjects(out, pg, p, view, fontCache, imgCache) {
     } else if (o.type === 'image') {
       const img = await getImage(out, o.asset, imgCache);
       pg.drawImage(img, L(o));
-    } else if (o.type === 'rect') {
+    } else if (o.type === 'rect' || o.type === 'redact') {
       pg.drawRectangle({ ...L(o), color: pdfColor(o.color), borderWidth: 0 });
+    } else if (o.type === 'shape') {
+      const color = pdfColor(o.color), sw = o.width;
+      if (o.shape === 'arrow' || o.shape === 'line') {
+        const x1 = o.x + (o.fx ? o.w : 0), y1 = o.y + (o.fy ? o.h : 0), x2 = o.x + (o.fx ? 0 : o.w), y2 = o.y + (o.fy ? 0 : o.h);
+        if (o.shape === 'arrow') {
+          const a = arrowHead(x1, y1, x2, y2, sw);
+          pg.drawLine({ start: { x: x1, y: H - y1 }, end: { x: a.back.x, y: H - a.back.y }, thickness: sw, color, lineCap: PDFLib.LineCapStyle.Round });
+          pg.drawSvgPath(`M${a.tip.x} ${a.tip.y} L${a.left.x} ${a.left.y} L${a.right.x} ${a.right.y} Z`, { x: 0, y: H, color, borderColor: color, borderWidth: sw * 0.6, borderLineCap: PDFLib.LineCapStyle.Round });
+        } else pg.drawLine({ start: { x: x1, y: H - y1 }, end: { x: x2, y: H - y2 }, thickness: sw, color, lineCap: PDFLib.LineCapStyle.Round });
+      } else if (o.shape === 'rect') {
+        pg.drawRectangle({ x: o.x + sw / 2, y: H - o.y - o.h + sw / 2, width: Math.max(0, o.w - sw), height: Math.max(0, o.h - sw), borderColor: color, borderWidth: sw });
+      } else if (o.shape === 'ellipse') {
+        pg.drawEllipse({ x: o.x + o.w / 2, y: H - o.y - o.h / 2, xScale: Math.max(0, o.w / 2 - sw / 2), yScale: Math.max(0, o.h / 2 - sw / 2), borderColor: color, borderWidth: sw });
+      }
+    } else if (o.type === 'stamp') {
+      if (!fontCache.has('__stamp')) fontCache.set('__stamp', await out.embedFont(PDFLib.StandardFonts.HelveticaBold));
+      const font = fontCache.get('__stamp'), color = pdfColor(o.color), bw = Math.max(1, o.h * 0.075);
+      pg.drawRectangle({ x: o.x + bw / 2, y: H - o.y - o.h + bw / 2, width: o.w - bw, height: o.h - bw, borderColor: color, borderWidth: bw, opacity: 0, borderOpacity: 0.92 });
+      const size = o.h * 0.48, txt = sanitize(o.text, font);
+      const tw = font.widthOfTextAtSize(txt, size);
+      pg.drawText(txt, { x: o.x + (o.w - tw) / 2, y: H - o.y - o.h / 2 - size * 0.35, size, font, color, opacity: 0.92 });
     } else if (o.type === 'highlight') {
       pg.drawRectangle({ ...L(o), color: pdfColor(o.color), opacity: o.opacity ?? 0.45, borderWidth: 0, blendMode: BlendMode.Multiply });
     } else if (o.type === 'mark') {
@@ -183,7 +238,8 @@ async function drawObjects(out, pg, p, view, fontCache, imgCache) {
 }
 
 /* ------------------------------------------------ téléchargement */
-const fileName = suffix => `${state.docName || 'document'}${suffix}.pdf`;
+// « tract-modifié » enregistré à nouveau reste « tract-modifié » (pas « tract-modifié-modifié »)
+const fileName = suffix => { const n = state.docName || 'document'; return `${suffix && n.endsWith(suffix) ? n : n + suffix}.pdf`; };
 
 export async function downloadPdf(pageIds = null, suffix = '-modifié') {
   const t = toast('Préparation du PDF…', { duration: 60000 });
@@ -192,6 +248,7 @@ export async function downloadPdf(pageIds = null, suffix = '-modifié') {
     t.remove();
     const saved = await downloadBlob(new Blob([bytes], { type: 'application/pdf' }), fileName(suffix));
     if (saved === false) return;
+    if (!pageIds) emit('pdf-saved', { bytes, name: fileName(suffix) });
     toast(window.atelierDesktop || window.__atelierSave ? 'PDF enregistré.' : 'PDF enregistré dans vos téléchargements.');
     state.dirty = false;
   } catch (e) {

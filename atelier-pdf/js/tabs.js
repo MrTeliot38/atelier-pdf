@@ -17,7 +17,7 @@ const pagesOf = t => (t === active ? state.pages : t.pages);
 function stash() {
   if (!active) return;
   Object.assign(active, {
-    pages: state.pages, formValues: state.formValues, docName: state.docName, filePath: state.filePath, dirty: state.dirty,
+    pages: state.pages, formValues: state.formValues, docName: state.docName, filePath: state.filePath, recentId: state.recentId, dirty: state.dirty,
     zoom: state.zoom, currentPage: state.currentPage, scrollTop: mat.scrollTop, scrollLeft: mat.scrollLeft,
     selectedPages: new Set(state.selectedPages), history: exportHistory(),
   });
@@ -26,7 +26,7 @@ function stash() {
 function show(t) {
   if (state.editing) document.activeElement?.blur?.();
   active = t;
-  Object.assign(state, { pages: t.pages, formValues: t.formValues, docName: t.docName, filePath: t.filePath, dirty: t.dirty,
+  Object.assign(state, { pages: t.pages, formValues: t.formValues, docName: t.docName, filePath: t.filePath, recentId: t.recentId, dirty: t.dirty,
     zoom: t.zoom, currentPage: t.currentPage, selected: null, editing: null });
   state.selectedPages = new Set(t.selectedPages);
   importHistory(t.history);
@@ -45,7 +45,7 @@ export function openTab(res, { quiet = false } = {}) {
   const at = prev ? tabs.indexOf(prev) + 1 : tabs.length;
   tabs.splice(at, 0, t);
   active = t;
-  Object.assign(state, { pages: t.pages, formValues: t.formValues, docName: t.docName, filePath: t.filePath, selected: null, editing: null });
+  Object.assign(state, { pages: t.pages, formValues: t.formValues, docName: t.docName, filePath: t.filePath, recentId: null, selected: null, editing: null });
   state.selectedPages = new Set();
   emit('doc-opened');
   resetHistory();

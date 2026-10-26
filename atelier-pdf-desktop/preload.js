@@ -12,6 +12,10 @@ contextBridge.exposeInMainWorld('atelierDesktop', {
   // chemin réel d'un fichier glissé ou choisi : on le signale pour que « Enregistrer » puisse le réécrire
   pathFor: file => { try { const p = webUtils.getPathForFile(file) || null; if (p) ipcRenderer.send('allow-path', p); return p; } catch { return null; } },
   save: (p, bytes) => ipcRenderer.invoke('file:save', p, bytes),
+  recentList: () => ipcRenderer.invoke('recent:list'),
+  recentOpen: p => ipcRenderer.invoke('recent:open', p),
+  recentRemove: p => ipcRenderer.invoke('recent:remove', p),
+  recentClear: () => ipcRenderer.invoke('recent:clear'),
   saveAs: (name, bytes, current) => ipcRenderer.invoke('file:saveAs', name, bytes, current),
   reveal: p => ipcRenderer.invoke('file:reveal', p),
   sharePrepare: (name, bytes) => ipcRenderer.invoke('share:prepare', name, bytes),
