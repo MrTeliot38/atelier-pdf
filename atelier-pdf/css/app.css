@@ -634,7 +634,7 @@ body.scanning { overflow: hidden; }
 @media (max-width: 600px) {
   .mobile-only { display: block; }
   #btnPrint, #btnImages { display: none; }
-  .topbar { gap: 2px; padding: 0 4px 0 10px; }
+  .topbar { gap: 2px; padding: var(--sat) 4px 0 10px; } /* sous la barre de notification d'Android */
   .group { padding: 0 2px; }
   .brand { margin-right: 2px; }
   .menu { max-width: calc(100vw - 20px); }
