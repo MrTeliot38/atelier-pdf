@@ -5,6 +5,8 @@
 const { app, BrowserWindow, protocol, ipcMain, dialog, shell, Menu, session, nativeTheme } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const crypto = require('crypto');
 
 const APP_DIR = path.join(__dirname, 'app');
 const MIME = {
@@ -39,6 +41,155 @@ ipcMain.on('theme:set', guardOn((_e, t) => {
   if (!['system', 'light', 'dark'].includes(t) || nativeTheme.themeSource === t) return;
   nativeTheme.themeSource = t;
   fs.promises.writeFile(themeFile(), JSON.stringify({ theme: t })).catch(() => {});
+}));
+
+/* ---------------- impression avec aperçu ---------------- */
+// Le rendu des feuilles (aperçu, pages par feuille…) est fait par la fenêtre ; ici, on reçoit les feuilles
+// en images, puis on les imprime depuis une fenêtre invisible, sans repasser par la fenêtre de Windows.
+const printJobs = new Map(); // id -> { dir, owner }
+const PRINT_SES = 'atelier-print';
+ipcMain.handle('print:printers', guard(async e => {
+  const list = await e.sender.getPrintersAsync();
+  return list.map(p => ({ name: p.name, displayName: p.displayName || p.name, isDefault: !!p.isDefault }));
+}));
+ipcMain.handle('print:begin', guard(async e => {
+  const id = crypto.randomBytes(12).toString('hex');
+  const dir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'atelier-impression-'));
+  printJobs.set(id, { dir, owner: e.sender.id }); printDirs.add(dir);
+  return id;
+}));
+const jobOf = (e, id) => { const j = printJobs.get(id); if (!j || j.owner !== e.sender.id) throw new Error('Impression inconnue'); return j; };
+ipcMain.handle('print:sheet', guard(async (e, id, i, bytes) => {
+  const j = jobOf(e, id);
+  if (!Number.isInteger(i) || i < 0 || i > 5000 || !(bytes instanceof Uint8Array) || bytes.length > 80e6) throw new Error('Feuille refusée');
+  // PNG uniquement
+  if (bytes[0] !== 0x89 || bytes[1] !== 0x50 || bytes[2] !== 0x4e || bytes[3] !== 0x47) throw new Error('Feuille refusée');
+  await fs.promises.writeFile(path.join(j.dir, `f${i}.png`), bytes);
+  return true;
+}));
+const printDirs = new Set();
+// fichiers d'impression oubliés (application fermée pendant l'impression…)
+function purgeOldPrintDirs() {
+  fs.promises.readdir(os.tmpdir()).then(names => names.filter(n => n.startsWith('atelier-impression-')).forEach(n => {
+    const d = path.join(os.tmpdir(), n);
+    fs.promises.stat(d).then(st => { if (Date.now() - st.mtimeMs > 3600e3) fs.promises.rm(d, { recursive: true, force: true }); }).catch(() => {});
+  })).catch(() => {});
+}
+app.on('will-quit', () => { for (const d of printDirs) { try { fs.rmSync(d, { recursive: true, force: true }); } catch {} } });
+function endPrintJob(id) {
+  const j = printJobs.get(id); if (!j) return;
+  printJobs.delete(id);
+  // laisse le temps au spouleur de Windows de lire les fichiers
+  setTimeout(() => fs.promises.rm(j.dir, { recursive: true, force: true }).then(() => printDirs.delete(j.dir)).catch(() => {}), 120000);
+}
+ipcMain.handle('print:cancel', guard(async (e, id) => { jobOf(e, id); endPrintJob(id); return true; }));
+ipcMain.handle('print:run', guard(async (e, id, o) => {
+  const j = jobOf(e, id);
+  const count = Math.max(1, Math.min(5000, Math.floor(+o?.count || 0)));
+  const pw = Math.max(100, Math.min(3000, +o?.paper?.w || 595.28)), ph = Math.max(100, Math.min(3000, +o?.paper?.h || 841.89));
+  const printers = await e.sender.getPrintersAsync();
+  const deviceName = printers.some(p => p.name === o?.deviceName) ? o.deviceName : undefined;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><style>
+    @page { size: ${pw}pt ${ph}pt; margin: 0 }
+    html, body { margin: 0; padding: 0 }
+    img { display: block; width: ${pw}pt; height: ${ph}pt; break-after: page; page-break-after: always }
+    img:last-child { break-after: auto; page-break-after: auto }
+  </style></head><body>${Array.from({ length: count }, (_, i) => `<img src="f${i}.png">`).join('')}</body></html>`;
+  const file = path.join(j.dir, 'impression.html');
+  await fs.promises.writeFile(file, html);
+  const owner = BrowserWindow.fromWebContents(e.sender);
+  const pwin = new BrowserWindow({ show: false, parent: owner || undefined, webPreferences: { partition: PRINT_SES, sandbox: true, contextIsolation: true, javascript: false } });
+  try {
+    await pwin.loadFile(file);
+    const micron = v => Math.round(v / 72 * 25400);
+    const opts = {
+      silent: !o?.system, printBackground: true, deviceName,
+      copies: Math.max(1, Math.min(999, Math.floor(+o?.copies || 1))), collate: o?.collate !== false,
+      duplexMode: ['simplex', 'shortEdge', 'longEdge'].includes(o?.duplex) ? o.duplex : 'simplex',
+      color: o?.color !== false, landscape: false,
+      margins: { marginType: 'none' }, pageSize: { width: micron(pw), height: micron(ph) },
+    };
+    return await new Promise(res => pwin.webContents.print(opts, (success, reason) => res({ success, reason: success ? '' : String(reason || '') })));
+  } finally {
+    setTimeout(() => { if (!pwin.isDestroyed()) pwin.destroy(); }, 1500);
+    endPrintJob(id);
+  }
+}));
+
+/* ---------------- mises à jour (seulement à la demande) ---------------- */
+// Seul accès à internet de l'application : la page des versions publiées sur GitHub,
+// depuis une session à part (les fenêtres, elles, restent coupées d'internet).
+const UPDATE_REPO = 'MrTeliot38/atelier-pdf';
+const updSes = () => session.fromPartition('atelier-updates');
+const verParts = v => String(v || '').replace(/^v/i, '').split(/[.-]/).slice(0, 3).map(n => parseInt(n, 10) || 0);
+const newerThan = (a, b) => { const x = verParts(a), y = verParts(b); for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; };
+const okHost = u => { try { const h = new URL(u).hostname; return new URL(u).protocol === 'https:' && (h === 'github.com' || h.endsWith('.github.com') || h.endsWith('.githubusercontent.com')); } catch { return false; } };
+async function latestRelease() {
+  const r = await updSes().fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
+    headers: { 'User-Agent': 'Atelier-PDF/' + app.getVersion(), Accept: 'application/vnd.github+json' }, cache: 'no-store',
+  });
+  if (r.status === 404) return { latest: null };
+  if (r.status === 403 || r.status === 429) throw new Error('GitHub limite le nombre de vérifications : réessayez dans une heure.');
+  if (!r.ok) throw new Error('GitHub a répondu ' + r.status);
+  const j = await r.json();
+  const a = (j.assets || []).find(x => /\.exe$/i.test(x.name || ''));
+  const notes = String(j.body || '').slice(0, 10000);
+  let sha = /^sha256:([0-9a-f]{64})$/i.exec(a?.digest || '')?.[1];
+  if (!sha && a) sha = /(?:EXE|\.exe)[^\n]*?([0-9a-f]{64})/i.exec(notes)?.[1];
+  return {
+    latest: String(j.tag_name || '').replace(/^v/i, ''), name: j.name || '', notes, page: okHost(j.html_url) ? j.html_url : `https://github.com/${UPDATE_REPO}/releases/latest`,
+    asset: a && okHost(a.browser_download_url) ? { name: path.basename(a.name).replace(/[^\w.-]/g, '_'), size: a.size || 0, url: a.browser_download_url, sha: sha ? sha.toLowerCase() : null } : null,
+  };
+}
+let lastRelease = null, updating = false;
+ipcMain.handle('update:check', guard(async () => {
+  lastRelease = await latestRelease();
+  const current = app.getVersion();
+  return { current, latest: lastRelease.latest, newer: !!lastRelease.latest && newerThan(lastRelease.latest, current), notes: lastRelease.notes, page: lastRelease.page,
+    size: lastRelease.asset?.size || 0, installable: !!lastRelease.asset };
+}));
+ipcMain.handle('update:open-page', guard(async () => { shell.openExternal(lastRelease?.page || `https://github.com/${UPDATE_REPO}/releases/latest`); return true; }));
+ipcMain.handle('update:install', guard(async e => {
+  if (updating) throw new Error('Téléchargement déjà en cours');
+  const rel = lastRelease || await latestRelease();
+  if (!rel.asset || !newerThan(rel.latest, app.getVersion())) throw new Error('Aucune mise à jour à installer');
+  if (!rel.asset.sha) throw new Error('Empreinte de contrôle absente de la version publiée : installation refusée par sécurité.');
+  updating = true;
+  const dir = path.join(os.tmpdir(), 'atelier-pdf-maj');
+  await fs.promises.mkdir(dir, { recursive: true });
+  const file = path.join(dir, rel.asset.name);
+  try {
+    const res = await updSes().fetch(rel.asset.url, { headers: { 'User-Agent': 'Atelier-PDF/' + app.getVersion() }, cache: 'no-store' });
+    if (!res.ok || (res.url && !okHost(res.url))) throw new Error('Téléchargement refusé (' + res.status + ')');
+    const total = +res.headers.get('content-length') || rel.asset.size || 0;
+    const hash = crypto.createHash('sha256');
+    const out = fs.createWriteStream(file);
+    const reader = res.body.getReader();
+    let got = 0, lastSent = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      hash.update(value); got += value.length;
+      if (!out.write(value)) await new Promise(r => out.once('drain', r));
+      if (got > 600e6) throw new Error('Fichier trop volumineux');
+      if (Date.now() - lastSent > 150) { lastSent = Date.now(); if (!e.sender.isDestroyed()) e.sender.send('update:progress', { got, total }); }
+    }
+    await new Promise((r, j) => out.end(err => err ? j(err) : r()));
+    if (hash.digest('hex') !== rel.asset.sha) throw new Error('Le fichier téléchargé ne correspond pas à l\'empreinte publiée : installation annulée.');
+    const head = Buffer.alloc(2); const fd = await fs.promises.open(file, 'r'); await fd.read(head, 0, 2, 0); await fd.close();
+    if (head.toString('latin1') !== 'MZ') throw new Error('Fichier d\'installation invalide');
+    if (!e.sender.isDestroyed()) e.sender.send('update:progress', { got, total: got, done: true });
+    // l'installateur attend que l'application soit fermée, puis la relance
+    const { spawn } = require('child_process');
+    const child = spawn(file, [], { detached: true, stdio: 'ignore' });
+    await new Promise((res, rej) => { child.once('spawn', res); child.once('error', rej); });
+    child.unref();
+    setTimeout(() => app.quit(), 600);
+    return true;
+  } catch (err) {
+    fs.promises.rm(file, { force: true }).catch(() => {});
+    throw err;
+  } finally { updating = false; }
 }));
 
 /* ---------------- fichiers récents ---------------- */
@@ -313,6 +464,7 @@ ipcMain.handle('defaults:open', guard(async () => {
 /* ---------------- démarrage ---------------- */
 app.whenReady().then(() => {
   loadTheme();
+  purgeOldPrintDirs();
   protocol.handle('app', async req => {
     const u = new URL(req.url);
     if (u.host !== 'atelier') return new Response('Interdit', { status: 403 });
@@ -331,6 +483,8 @@ app.whenReady().then(() => {
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => permission === 'clipboard-sanitized-write');
   // aucune requête réseau sortante : l'application fonctionne entièrement hors ligne
   session.defaultSession.webRequest.onBeforeRequest((d, cb) => cb({ cancel: !/^(app|blob|data|devtools):/i.test(d.url) }));
+  // fenêtre d'impression : uniquement ses propres fichiers temporaires
+  session.fromPartition(PRINT_SES).webRequest.onBeforeRequest((d, cb) => cb({ cancel: !/^file:/i.test(d.url) || !d.url.includes('atelier-impression-') }));
   session.defaultSession.on('will-download', (_e, item) => {
     item.setSaveDialogOptions({ title: 'Enregistrer', defaultPath: path.join(app.getPath('documents'), item.getFilename()) });
   });

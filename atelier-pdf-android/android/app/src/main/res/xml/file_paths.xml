@@ -2,6 +2,8 @@
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- fichiers préparés pour le partage et l'impression (cache de l'application) -->
     <cache-path name="partage" path="partage/" />
+    <!-- mise à jour téléchargée, transmise à l'installateur d'Android -->
+    <cache-path name="maj" path="maj/" />
     <!-- photos prises depuis un champ « fichier » (caméra du système) -->
     <external-files-path name="photos" path="Pictures/" />
 </paths>

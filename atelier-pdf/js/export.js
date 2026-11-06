@@ -239,7 +239,7 @@ async function drawObjects(out, pg, p, view, fontCache, imgCache) {
 
 /* ------------------------------------------------ téléchargement */
 // « tract-modifié » enregistré à nouveau reste « tract-modifié » (pas « tract-modifié-modifié »)
-const fileName = suffix => { const n = state.docName || 'document'; return `${suffix && n.endsWith(suffix) ? n : n + suffix}.pdf`; };
+export const fileName = suffix => { const n = state.docName || 'document'; return `${suffix && n.endsWith(suffix) ? n : n + suffix}.pdf`; };
 
 export async function downloadPdf(pageIds = null, suffix = '-modifié') {
   const t = toast('Préparation du PDF…', { duration: 60000 });
@@ -296,32 +296,8 @@ export async function downloadFlattened() {
   } catch (e) { console.error(e); t.remove(); toast('L\'export a échoué : ' + e.message, { error: true }); }
 }
 
-/* ------------------------------------------------ impression */
-export function openPrintDialog() {
-  const n = state.pages.length;
-  const sel = state.selectedPages.size ? state.pages.map((p, i) => state.selectedPages.has(p.id) ? i + 1 : 0).filter(Boolean) : Array.from({ length: n }, (_, i) => i + 1);
-  const summary = h('span', { class: 'grow' });
-  const printBtn = h('button', { class: 'btn primary' }, 'Imprimer');
-  const picker = pagePicker({ thumbFor, initial: sel, onChange: s => { summary.textContent = summaryText(s.size); printBtn.disabled = !s.size; } });
-  const m = modal({ title: 'Imprimer', width: 720,
-    body: [h('p', { class: 'help', style: { margin: 0 } }, 'Cliquez sur les pages pour les inclure ou les retirer, ou saisissez une plage. Les modifications sont imprimées avec le document.'), picker.el],
-    foot: [summary, h('button', { class: 'btn outline', onclick: () => m.close() }, 'Annuler'), printBtn] });
-  summary.textContent = summaryText(picker.get().length);
-  printBtn.onclick = async () => {
-    const nums = picker.get(); if (!nums.length) return;
-    printBtn.disabled = true; printBtn.replaceChildren(h('span', { class: 'spinner' }), 'Préparation…');
-    try {
-      const bytes = await buildPdf(nums.map(i => state.pages[i - 1].id));
-      m.close();
-      await printBytes(bytes);
-    } catch (e) {
-      console.error(e); toast('Impossible de préparer l\'impression : ' + e.message, { error: true });
-      printBtn.disabled = false; printBtn.textContent = 'Imprimer';
-    }
-  };
-}
-
-/** Application Windows : impression à partir d'images des pages (300 ppp), via la fenêtre d'impression du système. */
+/* ------------------------------------------------ impression (boîte de dialogue : print.js) */
+/** Navigateurs Android : impression à partir d'images des pages (300 ppp), via la fenêtre d'impression du système. */
 async function printViaImages(bytes) {
   const task = pdfjsLib.getDocument({ ...PDFJS_OPTS, data: bytes });
   const pdf = await task.promise;
@@ -354,7 +330,7 @@ async function printViaImages(bytes) {
   setTimeout(() => { frame.remove(); imgs.forEach(i => URL.revokeObjectURL(i.url)); }, 60_000);
 }
 
-async function printBytes(bytes) {
+export async function printBytes(bytes) {
   // application Android : impression par Android (imprimantes du réseau, « Enregistrer en PDF »…)
   if (window.__atelierPrint) return window.__atelierPrint(bytes, fileName(''));
   // Windows et navigateurs Android (qui n'affichent pas les PDF dans la page) : impression d'images des pages

@@ -11,16 +11,18 @@ import { initCtxBar, touchUI } from './ctxbar.js';
 import { openCompressDialog } from './compress.js';
 import { initRecents, openRecentsDialog } from './recents.js';
 import { initTheme } from './theme.js';
+import { initUpdates, openUpdateDialog } from './updates.js';
 import { initSearch, openSearch, closeSearch, isSearchOpen, searchStep } from './search.js';
 import { openSignatureDialog } from './signature.js';
-import { downloadPdf, downloadFlattened, openPrintDialog, openImageDialog } from './export.js';
+import { downloadPdf, downloadFlattened, openImageDialog } from './export.js';
+import { openPrintDialog } from './print.js';
 import { savePdf, openShareDialog } from './share.js';
 import { modal, confirmDialog, isModalOpen } from './ui.js';
 import { commit } from './core.js';
 import { openScanner, isScannerOpen } from './scanner.js';
-import { isAndroidApp, isTouch, saveBlob, printPdf, onIncomingFiles, initBackButton, defaultPdfStatus, openAppSettings, openTestPdf, testPdfInDownloads, removeTestPdf, TEST_PDF_NAME } from './platform.js';
+import { isAndroidApp, isTouch, saveBlob, onSaveDone, printPdf, onIncomingFiles, initBackButton, defaultPdfStatus, openAppSettings, openTestPdf, testPdfInDownloads, removeTestPdf, TEST_PDF_NAME } from './platform.js';
 
-const VERSION = '1.9.0';
+const VERSION = '1.10.0';
 const desktop = window.atelierDesktop;
 if (desktop) document.body.classList.add('is-desktop');
 const isMobile = () => window.innerWidth < 860;
@@ -34,6 +36,7 @@ initPageImages();
 initCtxBar();
 initSearch();
 initTheme();
+initUpdates();
 setTool('select');
 
 // premier lancement après une mise à jour
@@ -205,6 +208,7 @@ mainMenu.addEventListener('click', async e => {
   if (act === 'flat') downloadFlattened();
   if (act === 'compress') openCompressDialog();
   if (act === 'recents') openRecentsDialog();
+  if (act === 'updates') openUpdateDialog();
   if (act === 'saveas') savePdf(true);
   if (act === 'newwin') desktop?.newWindow();
   if (act === 'default') defaultReaderDialog();
@@ -298,8 +302,9 @@ if (desktop) {
 if (isAndroidApp) {
   window.__atelierSave = async (blob, name) => {
     try { return await saveBlob(blob, name); }
-    catch (e) { console.error(e); toast('L\'enregistrement n\'a pas abouti.', { error: true }); return false; }
+    catch (e) { console.error(e); toast('L\'enregistrement n\'a pas abouti : ' + (e.message || e), { error: true, duration: 9000 }); return false; }
   };
+  onSaveDone(r => r?.saved ? toast('PDF enregistré.') : toast('L\'enregistrement n\'a pas abouti' + (r?.error ? ' : ' + r.error : '.'), { error: true }));
   window.__atelierPrint = (bytes, name) => printPdf(bytes, name).catch(e => toast('Impression impossible : ' + (e.message || e), { error: true }));
   $('#btnDownload .lbl').textContent = 'Enregistrer';
   $('#btnDownload').title = 'Enregistrer le PDF sur le téléphone';

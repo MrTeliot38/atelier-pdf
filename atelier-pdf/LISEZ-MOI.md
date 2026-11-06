@@ -24,7 +24,7 @@ Tout le traitement se fait sur l'appareil de la personne : aucun document n'est 
 - **Apparence** (menu ⋮, en bas) : Automatique (comme l'appareil), Clair ou Sombre. Le choix est retenu ; dans l'application Windows la barre de titre suit, sur Android les icônes de la barre d'état aussi.
 - **Masquer, surligner, insérer une image.**
 - **Pages** : réordonner par glisser-déposer, pivoter, dupliquer, supprimer, ajouter une page blanche, les pages d'un autre PDF ou une photo ; télécharger une sélection de pages seule.
-- **Imprimer** en choisissant les pages (clic sur les miniatures ou saisie « 1-3, 6 »).
+- **Imprimer avec aperçu** (Ctrl+P) : pages (toutes, page affichée, sélection, « 1-3, 6 », paires/impaires, ordre inverse), 1 à 16 pages par feuille (ordre Z ou N, bordure), **livret** à plier, orientation, format du papier (A4, A3, A5, Lettre, Légal), taille (ajuster, réduire si nécessaire, taille réelle, pourcentage), marges, en-tête et pied de page. « Enregistrer en PDF » garde cette mise en page dans un nouveau fichier. Dans l'application Windows, en plus : choix de l'imprimante, copies et assemblage, recto verso, couleur ou noir et blanc, et « Réglages Windows… » pour les options propres à l'imprimante.
 - **Exporter en PNG ou JPG** (une image par page, archive .zip si plusieurs).
 - **Partager** : par e-mail ou WhatsApp (sur téléphone et dans Chrome / Edge, via le partage de l'appareil ; sinon le PDF est téléchargé et la messagerie s'ouvre).
 - **PDF aplati** (menu ⋮) : chaque page devient une image ; rien de masqué ou corrigé ne reste lisible dans le fichier.

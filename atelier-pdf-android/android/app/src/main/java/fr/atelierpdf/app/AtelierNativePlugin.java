@@ -1,6 +1,12 @@
 package fr.atelierpdf.app;
 
 import android.app.Activity;
+import android.provider.Settings;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.security.MessageDigest;
+import org.json.JSONArray;
+import org.json.JSONObject;
 import android.app.DownloadManager;
 import android.content.ContentValues;
 import android.os.Build;
@@ -60,7 +66,6 @@ public class AtelierNativePlugin extends Plugin {
 
     private static final long MAX_BYTES = 300L * 1024 * 1024;
     private final List<JSObject> pending = new ArrayList<>();
-    private byte[] toSave = null;
 
     @Override
     public void load() {
@@ -177,8 +182,15 @@ public class AtelierNativePlugin extends Plugin {
         String name = safeName(call.getString("name", "document.pdf"));
         String mime = call.getString("mime", "application/pdf");
         String data = call.getString("data");
-        if (data == null) { call.reject("Aucune donnée"); return; }
-        toSave = Base64.decode(data, Base64.DEFAULT);
+        if (data == null || data.isEmpty()) { call.reject("Aucune donnée à enregistrer"); return; }
+        // Le contenu est d'abord écrit dans le cache : il survit si Android recrée l'activité
+        // pendant que le sélecteur de fichiers est ouvert (sinon le fichier choisi restait vide).
+        try {
+            byte[] bytes = Base64.decode(data, Base64.DEFAULT);
+            if (bytes.length == 0) { call.reject("Document vide"); return; }
+            File f = pendingSaveFile();
+            try (FileOutputStream fos = new FileOutputStream(f)) { fos.write(bytes); }
+        } catch (Exception e) { call.reject("Préparation impossible : " + e.getMessage()); return; }
         Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         i.addCategory(Intent.CATEGORY_OPENABLE);
         i.setType(mime);
@@ -186,26 +198,68 @@ public class AtelierNativePlugin extends Plugin {
         startActivityForResult(call, i, "saveResult");
     }
 
+    private File pendingSaveFile() {
+        File dir = new File(getContext().getCacheDir(), "enregistrement");
+        if (!dir.exists()) dir.mkdirs();
+        return new File(dir, "a-enregistrer.bin");
+    }
+
     @ActivityCallback
     private void saveResult(PluginCall call, ActivityResult result) {
-        if (call == null) return;
-        byte[] bytes = toSave;
-        toSave = null;
-        JSObject ret = new JSObject();
-        if (result.getResultCode() != Activity.RESULT_OK || result.getData() == null || result.getData().getData() == null || bytes == null) {
-            ret.put("saved", false);
-            call.resolve(ret);
+        final File src = pendingSaveFile();
+        final Uri uri = (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) ? result.getData().getData() : null;
+        if (uri == null || !src.exists() || src.length() == 0) {
+            src.delete();
+            if (uri != null) deleteEmptyDocument(uri);
+            if (call != null) { JSObject ret = new JSObject(); ret.put("saved", false); call.resolve(ret); }
             return;
         }
-        Uri uri = result.getData().getData();
-        try (OutputStream os = getContext().getContentResolver().openOutputStream(uri, "wt")) {
-            if (os == null) throw new Exception("Flux indisponible");
-            os.write(bytes);
-            ret.put("saved", true);
-            call.resolve(ret);
-        } catch (Exception e) {
-            call.reject("Impossible d'enregistrer : " + e.getMessage());
+        // copie hors du fil principal (gros documents)
+        new Thread(() -> {
+            JSObject ret = new JSObject();
+            try {
+                long written = copyToUri(src, uri);
+                if (written != src.length()) throw new Exception("copie incomplète (" + written + " octets sur " + src.length() + ")");
+                ret.put("saved", true);
+                ret.put("size", written);
+                if (call != null) call.resolve(ret); else notifyListeners("saveDone", ret, true);
+            } catch (Exception e) {
+                deleteEmptyDocument(uri);
+                if (call != null) call.reject("Impossible d'enregistrer : " + e.getMessage());
+                else { ret.put("saved", false); ret.put("error", String.valueOf(e.getMessage())); notifyListeners("saveDone", ret, true); }
+            } finally {
+                src.delete();
+            }
+        }).start();
+    }
+
+    /** Écrit le fichier dans le document choisi ; certains services (Drive…) refusent le mode « wt ». */
+    private long copyToUri(File src, Uri uri) throws Exception {
+        ContentResolver cr = getContext().getContentResolver();
+        Exception last = null;
+        for (String mode : new String[] { "wt", "w", "rwt" }) {
+            try (OutputStream os = cr.openOutputStream(uri, mode); InputStream in = new FileInputStream(src)) {
+                if (os == null) throw new Exception("flux indisponible");
+                byte[] buf = new byte[256 * 1024];
+                long total = 0; int n;
+                while ((n = in.read(buf)) > 0) { os.write(buf, 0, n); total += n; }
+                os.flush();
+                return total;
+            } catch (Exception e) { last = e; }
         }
+        throw last != null ? last : new Exception("écriture impossible");
+    }
+
+    /** Annulation ou échec : on ne laisse pas un document vide de 0 Ko derrière soi. */
+    private void deleteEmptyDocument(Uri uri) {
+        try {
+            ContentResolver cr = getContext().getContentResolver();
+            long size = -1;
+            try (Cursor c = cr.query(uri, new String[] { OpenableColumns.SIZE }, null, null, null)) {
+                if (c != null && c.moveToFirst() && !c.isNull(0)) size = c.getLong(0);
+            }
+            if (size == 0) android.provider.DocumentsContract.deleteDocument(cr, uri);
+        } catch (Exception ignored) { }
     }
 
     /* ---------------- partager ---------------- */
@@ -443,6 +497,203 @@ public class AtelierNativePlugin extends Plugin {
             } catch (Exception ignored) { }
         });
         call.resolve();
+    }
+
+    /* ---------------- mises à jour (seulement à la demande) ---------------- */
+    // Seul accès à internet de l'application : la page des versions publiées sur GitHub.
+    private static final String UPDATE_API = "https://api.github.com/repos/MrTeliot38/atelier-pdf/releases/latest";
+    private JSObject lastRelease = null;
+    private volatile boolean downloading = false;
+
+    private String appVersion() {
+        try { return getContext().getPackageManager().getPackageInfo(getContext().getPackageName(), 0).versionName; }
+        catch (Exception e) { return "0"; }
+    }
+    private static int[] verParts(String v) {
+        String[] p = (v == null ? "" : v.replaceFirst("^[vV]", "")).split("[.-]");
+        int[] r = new int[3];
+        for (int i = 0; i < 3 && i < p.length; i++) { try { r[i] = Integer.parseInt(p[i].replaceAll("\\D.*$", "")); } catch (Exception ignored) { } }
+        return r;
+    }
+    private static boolean newerThan(String a, String b) {
+        int[] x = verParts(a), y = verParts(b);
+        for (int i = 0; i < 3; i++) if (x[i] != y[i]) return x[i] > y[i];
+        return false;
+    }
+    private static boolean okHost(String u) {
+        try {
+            URL url = new URL(u);
+            String h = url.getHost();
+            return "https".equals(url.getProtocol()) && (h.equals("github.com") || h.endsWith(".github.com") || h.endsWith(".githubusercontent.com"));
+        } catch (Exception e) { return false; }
+    }
+    private HttpURLConnection open(String u) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(u).openConnection();
+        c.setRequestProperty("User-Agent", "Atelier-PDF/" + appVersion());
+        c.setRequestProperty("Accept", "application/vnd.github+json");
+        c.setConnectTimeout(15000);
+        c.setReadTimeout(30000);
+        c.setInstanceFollowRedirects(true);
+        c.setUseCaches(false);
+        return c;
+    }
+
+    private JSObject fetchLatest() throws Exception {
+        HttpURLConnection c = open(UPDATE_API);
+        int code = c.getResponseCode();
+        if (code == 404) { JSObject r = new JSObject(); r.put("latest", ""); return r; }
+        if (code == 403 || code == 429) throw new Exception("GitHub limite le nombre de vérifications : réessayez dans une heure.");
+        if (code != 200) throw new Exception("GitHub a répondu " + code);
+        StringBuilder sb = new StringBuilder();
+        try (InputStream in = c.getInputStream()) {
+            byte[] buf = new byte[16384]; int n;
+            ByteArrayOutputStream bo = new ByteArrayOutputStream();
+            while ((n = in.read(buf)) > 0) { bo.write(buf, 0, n); if (bo.size() > 2_000_000) break; }
+            sb.append(bo.toString("UTF-8"));
+        } finally { c.disconnect(); }
+        JSONObject j = new JSONObject(sb.toString());
+        String notes = j.optString("body", "");
+        if (notes.length() > 10000) notes = notes.substring(0, 10000);
+        JSObject r = new JSObject();
+        r.put("latest", j.optString("tag_name", "").replaceFirst("^[vV]", ""));
+        r.put("notes", notes);
+        String page = j.optString("html_url", "");
+        r.put("page", okHost(page) ? page : "https://github.com/MrTeliot38/atelier-pdf/releases/latest");
+        JSONArray assets = j.optJSONArray("assets");
+        if (assets != null) for (int i = 0; i < assets.length(); i++) {
+            JSONObject a = assets.getJSONObject(i);
+            String name = a.optString("name", "");
+            String url = a.optString("browser_download_url", "");
+            if (!name.toLowerCase().endsWith(".apk") || !okHost(url)) continue;
+            String sha = null;
+            String dg = a.optString("digest", "");
+            if (dg.toLowerCase().startsWith("sha256:") && dg.length() == 71) sha = dg.substring(7).toLowerCase();
+            if (sha == null) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("(?i)(?:APK|\\.apk)[^\\n]*?([0-9a-f]{64})").matcher(notes);
+                if (m.find()) sha = m.group(1).toLowerCase();
+            }
+            r.put("assetName", name.replaceAll("[^\\w.-]", "_"));
+            r.put("assetUrl", url);
+            r.put("size", a.optLong("size", 0));
+            if (sha != null) r.put("sha", sha);
+            break;
+        }
+        return r;
+    }
+
+    @PluginMethod
+    public void checkUpdate(PluginCall call) {
+        new Thread(() -> {
+            try {
+                JSObject rel = fetchLatest();
+                lastRelease = rel;
+                String current = appVersion();
+                String latest = rel.getString("latest", "");
+                JSObject r = new JSObject();
+                r.put("current", current);
+                r.put("latest", latest);
+                r.put("newer", latest != null && !latest.isEmpty() && newerThan(latest, current));
+                r.put("notes", rel.getString("notes", ""));
+                r.put("page", rel.getString("page", ""));
+                r.put("size", rel.has("size") ? rel.getLong("size") : 0);
+                r.put("installable", rel.has("assetUrl"));
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e instanceof java.net.UnknownHostException || e instanceof java.net.SocketTimeoutException || e instanceof java.net.ConnectException
+                    ? "Pas de connexion à internet." : String.valueOf(e.getMessage()));
+            }
+        }).start();
+    }
+
+    private File updateFile(String name) {
+        File dir = new File(getContext().getCacheDir(), "maj");
+        if (!dir.exists()) dir.mkdirs();
+        return new File(dir, name);
+    }
+
+    private static String sha256(File f) throws Exception {
+        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        try (InputStream in = new FileInputStream(f)) { byte[] b = new byte[256 * 1024]; int n; while ((n = in.read(b)) > 0) md.update(b, 0, n); }
+        StringBuilder sb = new StringBuilder();
+        for (byte x : md.digest()) sb.append(String.format("%02x", x));
+        return sb.toString();
+    }
+
+    @PluginMethod
+    public void installUpdate(PluginCall call) {
+        if (downloading) { call.reject("Téléchargement déjà en cours"); return; }
+        downloading = true;
+        new Thread(() -> {
+            try {
+                JSObject rel = lastRelease != null ? lastRelease : fetchLatest();
+                String latest = rel.getString("latest", "");
+                String url = rel.getString("assetUrl", null);
+                String sha = rel.getString("sha", null);
+                if (url == null || !newerThan(latest, appVersion())) throw new Exception("Aucune mise à jour à installer");
+                if (sha == null) throw new Exception("Empreinte de contrôle absente de la version publiée : installation refusée par sécurité.");
+                File f = updateFile(rel.getString("assetName", "mise-a-jour.apk"));
+                // déjà téléchargé et vérifié (par exemple avant d'autoriser l'installation)
+                if (!(f.exists() && sha.equals(sha256(f)))) {
+                    File[] old = f.getParentFile().listFiles();
+                    if (old != null) for (File o : old) o.delete();
+                    HttpURLConnection c = open(url);
+                    c.setRequestProperty("Accept", "application/octet-stream");
+                    int code = c.getResponseCode();
+                    if (code != 200 || !okHost(c.getURL().toString())) throw new Exception("Téléchargement refusé (" + code + ")");
+                    long total = c.getContentLengthLong();
+                    MessageDigest md = MessageDigest.getInstance("SHA-256");
+                    long got = 0, last = 0;
+                    try (InputStream in = c.getInputStream(); FileOutputStream out = new FileOutputStream(f)) {
+                        byte[] b = new byte[128 * 1024]; int n;
+                        while ((n = in.read(b)) > 0) {
+                            out.write(b, 0, n); md.update(b, 0, n); got += n;
+                            if (got > 400_000_000L) throw new Exception("Fichier trop volumineux");
+                            if (System.currentTimeMillis() - last > 150) {
+                                last = System.currentTimeMillis();
+                                JSObject p = new JSObject(); p.put("got", got); p.put("total", total); notifyListeners("updateProgress", p);
+                            }
+                        }
+                    } finally { c.disconnect(); }
+                    StringBuilder sb = new StringBuilder();
+                    for (byte x : md.digest()) sb.append(String.format("%02x", x));
+                    if (!sha.equals(sb.toString())) { f.delete(); throw new Exception("Le fichier téléchargé ne correspond pas à l'empreinte publiée : installation annulée."); }
+                }
+                JSObject r = new JSObject();
+                if (Build.VERSION.SDK_INT >= 26 && !getContext().getPackageManager().canRequestPackageInstalls()) {
+                    // Android demande une autorisation la première fois
+                    Intent s = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getContext().getPackageName()));
+                    s.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    getActivity().startActivity(s);
+                    r.put("needPermission", true);
+                    call.resolve(r);
+                    return;
+                }
+                Uri uri = FileProvider.getUriForFile(getContext(), getContext().getPackageName() + ".fileprovider", f);
+                Intent i = new Intent(Intent.ACTION_VIEW);
+                i.setDataAndType(uri, "application/vnd.android.package-archive");
+                i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                getActivity().startActivity(i);
+                r.put("started", true);
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject(e instanceof java.net.UnknownHostException || e instanceof java.net.SocketTimeoutException || e instanceof java.net.ConnectException
+                    ? "Pas de connexion à internet." : String.valueOf(e.getMessage()));
+            } finally {
+                downloading = false;
+            }
+        }).start();
+    }
+
+    @PluginMethod
+    public void openUrl(PluginCall call) {
+        String u = call.getString("url", "");
+        if (!okHost(u)) { call.reject("Adresse refusée"); return; }
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW, Uri.parse(u));
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getActivity().startActivity(i);
+            call.resolve();
+        } catch (Exception e) { call.reject("Aucun navigateur"); }
     }
 
     private static String safeName(String n) {

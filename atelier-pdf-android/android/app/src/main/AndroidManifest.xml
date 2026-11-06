@@ -70,5 +70,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Appareil photo : scanner des documents (demandé seulement à la première utilisation) -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- mises à jour depuis l'application (sur demande) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>

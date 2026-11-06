@@ -24,6 +24,7 @@ const mimeOf = name => /\.pdf$/i.test(name) ? 'application/pdf' : /\.zip$/i.test
 /** Android : Android demande où enregistrer (Téléchargements, Drive…). Renvoie true si enregistré. */
 export async function saveBlob(blob, name) {
   if (!native) return false;
+  if (!blob || !blob.size) throw new Error('le document à enregistrer est vide');
   const r = await native.saveAs({ name, mime: blob.type || mimeOf(name), data: await blobToBase64(blob) });
   return !!(r && r.saved);
 }
@@ -43,6 +44,9 @@ export async function printPdf(bytes, name) {
   return native.print({ name, data: await blobToBase64(new Blob([bytes], { type: 'application/pdf' })) });
 }
 export const canNativePrint = () => !!native;
+
+/** Enregistrement terminé après un redémarrage de l'écran par Android (rare). */
+export function onSaveDone(cb) { native?.addListener('saveDone', cb); }
 
 /** Fichiers reçus d'autres applications (« Ouvrir avec », « Partager vers »). */
 export function onIncomingFiles(cb) {
