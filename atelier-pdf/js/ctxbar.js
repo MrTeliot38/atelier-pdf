@@ -3,12 +3,13 @@
 //  - élément sélectionné    → « Supprimer » et « OK »
 //  - outil actif            → rappel de l'outil et « ✕ » pour revenir à la navigation
 // + boutons de zoom flottants.
-import { state, on, h, $, svgIcon, ICONS, findObject } from './core.js';
+import { emit, state, on, h, $, svgIcon, ICONS, findObject } from './core.js';
 import { setTool, select, removeObject } from './tools.js';
 import { setZoom, fitWidth } from './viewer.js';
 
 const TOOLS = {
-  edit: ['Modifier le texte', 'Touchez un bloc de texte pour le corriger'],
+  edit: ['Modifier le document', 'Touchez un texte pour le corriger, deux fois une image pour la déplacer'],
+  fill: ['Remplir', 'Touchez une ligne pour écrire, une case pour la cocher'],
   text: ['Ajouter du texte', 'Touchez l\'endroit où écrire'],
   mark: ['Cocher', 'Touchez chaque case à cocher'],
   sign: ['Signer', 'Touchez l\'endroit où signer'],
@@ -43,8 +44,11 @@ export function initCtxBar() {
     if (!state.pages.length || !touchUI()) { bar.hidden = true; return; }
     const kids = [];
     if (state.editing) {
-      kids.push(h('span', { class: 'ctx-label' }, h('b', {}, 'Saisie en cours')),
-        h('button', { class: 'btn primary', type: 'button', onclick: finishTyping }, svgIcon(IC.done), 'Terminé'));
+      const fo = findObject(state.editing);
+      kids.push(h('span', { class: 'ctx-label' }, h('b', {}, 'Saisie en cours')));
+      // remplissage : passer d'une ligne à la suivante sans quitter le clavier
+      if (state.tool === 'fill' && fo?.obj.fill) kids.push(h('button', { class: 'btn outline', type: 'button', onclick: () => emit('fill-next', { id: state.editing, dir: 1 }) }, 'Suivant', svgIcon('<path d="M9 6l6 6-6 6"/>')));
+      kids.push(h('button', { class: 'btn primary', type: 'button', onclick: finishTyping }, svgIcon(IC.done), 'Terminé'));
     } else if (state.selected) {
       const f = findObject(state.selected);
       kids.push(h('span', { class: 'ctx-label' }, h('b', {}, (f && TYPE[f.obj.type]) || 'Élément'), h('small', {}, 'sélectionné')),

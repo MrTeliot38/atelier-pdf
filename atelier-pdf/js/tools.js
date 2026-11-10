@@ -6,10 +6,12 @@ import { matchSystemFont, loadSystemFamily } from './systemfonts.js';
 import { guessFont, MATCH_THRESHOLD } from './fontmatch.js';
 import { liftImage, renderImageLayer, findRegions } from './pageimages.js';
 import { textErasePatch } from './inpaint.js';
+import { detectFields } from './formdetect.js';
 
 const TOOL_HINTS = {
   select: 'Cliquez sur une image du document ou un élément ajouté pour le sélectionner et le déplacer ; double-cliquez sur un texte pour l\'écrire. Suppr pour l\'effacer, Ctrl+Z pour annuler.',
-  edit: 'Survolez le document : chaque bloc de texte reconnu s\'entoure. Cliquez dessus pour le corriger.',
+  edit: 'Cliquez sur un texte du document pour le corriger, ou sur une image pour la déplacer, la redimensionner ou la supprimer.',
+  fill: 'Cliquez sur une ligne ou dans une zone pour écrire, sur une case pour la cocher. Entrée ou Tab passe à la zone suivante.',
   text: 'Cliquez à l\'endroit où écrire.',
   sign: 'Créez ou choisissez une signature, puis cliquez à l\'endroit où signer.',
   mark: 'Cliquez sur une case pour la cocher. Choisissez ✓, ✗ ou ● dans le panneau.',
@@ -49,6 +51,8 @@ export function initTools() {
   on('pages-changed', refreshTextLayers);
   on('objects-changed', () => { if (state.tool === 'edit') refreshTextLayers(); });
   on('text-blur', stopEditing);
+  on('fill-next', fillNext);
+  on('page-near', id => { if (state.tool === 'fill') renderFillLayer(id); });
 }
 
 export function select(id) { state.selected = id; emit('selection'); }
@@ -58,8 +62,78 @@ const tokens = new Map();
 export function refreshTextLayers() {
   for (const s of slots.values()) {
     if (state.tool === 'edit' && isNear(s.page.id)) renderTextLayer(s.page.id);
+    else if (state.tool === 'fill' && isNear(s.page.id)) { s.banner.classList.remove('show'); renderFillLayer(s.page.id); }
     else if (state.tool !== 'edit') { s.text.replaceChildren(); s.banner.classList.remove('show'); }
   }
+}
+
+/* ------------------------------------------------ remplir : zones repérées (cases, lignes) */
+async function renderFillLayer(pageId) {
+  const s = getSlot(pageId); if (!s) return;
+  const token = {}; tokens.set(pageId, token);
+  const mode = state.fill.mode;
+  if (!state.fill.detect) { s.text.replaceChildren(); return; }
+  let f;
+  try { f = await detectFields(s.page); } catch { return; }
+  if (tokens.get(pageId) !== token || state.tool !== 'fill') return;
+  const z = state.zoom, frag = document.createDocumentFragment();
+  if (mode !== 'text') for (const b of f.boxes) {
+    const el = h('div', { class: 'fzone box', title: 'Cocher cette case' });
+    Object.assign(el.style, { left: (b.x - 1.5) * z + 'px', top: (b.y - 1.5) * z + 'px', width: (b.w + 3) * z + 'px', height: (b.h + 3) * z + 'px' });
+    el._field = { kind: 'box', ...b }; frag.append(el);
+  }
+  if (mode !== 'mark') f.lines.forEach((l, i) => {
+    const hh = Math.min(Math.max(l.free, 9), 18);
+    const el = h('div', { class: 'fzone line', title: 'Écrire sur cette ligne' });
+    Object.assign(el.style, { left: l.x * z + 'px', top: (l.y - hh) * z + 'px', width: l.w * z + 'px', height: (hh + 2) * z + 'px' });
+    el._field = { kind: 'line', i, ...l }; frag.append(el);
+  });
+  s.text.replaceChildren(frag);
+}
+/** Clic dans une zone repérée : coche (ou décoche) la case, ou écrit sur la ligne. */
+function fillField(page, f, p) {
+  if (f.kind === 'box') {
+    const cx = f.x + f.w / 2, cy = f.y + f.h / 2;
+    const had = page.objects.find(o => o.type === 'mark' && cx >= o.x - 1 && cx <= o.x + o.w + 1 && cy >= o.y - 1 && cy <= o.y + o.h + 1);
+    if (had) { page.objects.splice(page.objects.indexOf(had), 1); if (state.selected === had.id) state.selected = null; commit(); emit('selection'); return; }
+    const size = Math.min(f.w, f.h) * 0.82;
+    page.objects.push({ id: uid(), type: 'mark', mark: state.markKind, x: cx - size / 2, y: cy - size / 2, w: size, h: size, color: state.markColor || '#111111' });
+    commit(); emit('selection');
+    return;
+  }
+  const key = Math.round(f.x) + ':' + Math.round(f.y);
+  const had = page.objects.find(o => o.type === 'text' && o.fillKey === key);
+  if (had) return startEditing(had.id);
+  const d = state.textDefaults;
+  // taille : celle choisie, réduite si la place au-dessus de la ligne manque
+  const size = clamp(Math.min(d.size, f.free * 0.78), 6.5, d.size);
+  // ligne courte : on écrit depuis son début ; longue ligne (tableau, pleine largeur) : depuis l'endroit cliqué
+  const x = f.x + 2.5;
+  const o = { id: uid(), type: 'text', x, y: f.y - 1.6 - size * (0.9 + (d.lineHeight - 1) / 2), w: Math.max(40, f.x + f.w - x - 2), h: size * d.lineHeight, text: '', ...d, size, fill: true, fillKey: key };
+  page.objects.push(o);
+  startEditing(o.id);
+}
+/** Entrée ou Tab dans un texte de remplissage : zone suivante (ou précédente) de la page. */
+async function fillNext({ id, dir }) {
+  const fo = findObject(id); if (!fo) return;
+  const page = fo.page, o = fo.obj;
+  const f = await detectFields(page);
+  const lines = f.lines;
+  if (!lines.length) { document.activeElement?.blur?.(); return; }
+  let i = lines.findIndex(l => Math.round(l.x) + ':' + Math.round(l.y) === o.fillKey);
+  if (i < 0) {
+    // texte libre : la première ligne située après (ou avant) lui
+    const base = o.y + o.h;
+    i = dir > 0 ? lines.findIndex(l => l.y > base + 2 || (Math.abs(l.y - base) <= 6 && l.x > o.x + 4)) - 1 : lines.findIndex(l => l.y >= base - 6);
+    if (dir > 0 && i < -1) i = lines.length - 1;
+  }
+  const n = lines[i + dir];
+  document.activeElement?.blur?.();
+  if (!n) return;
+  setTimeout(() => {
+    fillField(page, { kind: 'line', ...n }, null);
+    const s = getSlot(page.id); s?.el?.querySelector?.('textarea.editor')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, 30);
 }
 async function renderTextLayer(pageId) {
   const s = getSlot(pageId); if (!s) return;
@@ -164,8 +238,14 @@ function onDown(e) {
     if (touch) return waitTap(e, () => editBlock(page, tb._block, tb));
     e.preventDefault(); return editBlock(page, tb._block, tb);
   }
+  const fz = e.target.closest('.fzone');
+  if (fz && state.tool === 'fill') {
+    const pf = pagePoint(e, pageId);
+    if (touch) return waitTap(e, () => fillField(page, fz._field, pf));
+    e.preventDefault(); return fillField(page, fz._field, pf);
+  }
   const pim = e.target.closest('.pimg');
-  if (pim && state.tool === 'select') {
+  if (pim && (state.tool === 'select' || state.tool === 'edit')) {
     e.preventDefault();
     // image de toute la page (scan, photo convertie) : un simple clic ne la prend pas,
     // il faut la faire glisser ou double-cliquer dessus
@@ -203,9 +283,10 @@ function onDown(e) {
   }
   const p = pagePoint(e, pageId);
   if (touch && state.tool === 'annot' && (state.annot.kind === 'note' || state.annot.kind === 'stamp')) return waitTap(e, () => addAnnotAt(page, p));
-  if (touch && (state.tool === 'text' || state.tool === 'mark' || state.tool === 'sign')) {
+  if (touch && (state.tool === 'text' || state.tool === 'mark' || state.tool === 'sign' || state.tool === 'fill')) {
     return waitTap(e, () => {
-      if (state.tool === 'text') addText(page, p);
+      if (state.tool === 'fill') (state.fill.mode === 'mark' ? addMark : addText)(page, p);
+      else if (state.tool === 'text') addText(page, p);
       else if (state.tool === 'mark') addMark(page, p);
       else if (state.pendingSignature) placeSignature(page, p);
       else emit('open-signature', {});
@@ -213,6 +294,7 @@ function onDown(e) {
   }
   if (touch && state.tool === 'select') return waitTap(e, () => { if (state.selected) select(null); });
   switch (state.tool) {
+    case 'fill': e.preventDefault(); return (state.fill.mode === 'mark' ? addMark : addText)(page, p);
     case 'text': e.preventDefault(); return addText(page, p);
     case 'mark': e.preventDefault(); return addMark(page, p);
     case 'sign':
@@ -397,6 +479,7 @@ function addText(page, p) {
   const d = state.textDefaults;
   const w = clamp(page.w - p.x - 12, 40, 240);
   const o = { id: uid(), type: 'text', x: p.x, y: p.y - d.size * 0.65, w, h: d.size * d.lineHeight, text: '', ...d };
+  if (state.tool === 'fill') o.fill = true;
   page.objects.push(o);
   startEditing(o.id);
 }

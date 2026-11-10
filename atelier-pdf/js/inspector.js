@@ -61,7 +61,8 @@ function render(force) {
   let content = null;
   if (sel) content = objectPanel(sel.obj, sel.page);
   else content = toolPanel(state.tool);
-  if (!content) { ins.hidden = true; ins.replaceChildren(); return; }
+  // téléphone : en simple navigation (outil Sélection, rien de sélectionné), le panneau ne sert à rien
+  if (!content || (!sel && state.tool === 'select' && window.innerWidth < 860)) { ins.hidden = true; ins.replaceChildren(); return; }
   const closer = h('button', { class: 'btn icon small insp-close', type: 'button', title: 'Masquer ce panneau', 'aria-label': 'Masquer ce panneau', onclick: () => { ins.hidden = true; } }, svgIcon(ICONS.close));
   ins.replaceChildren(closer, ...[].concat(content));
   ins.hidden = false;
@@ -350,13 +351,35 @@ function toolPanel(tool) {
   }
   if (tool === 'edit') {
     return [
-      h('h2', {}, 'Modifier le texte'),
-      h('p', { class: 'help' }, T('Cliquez', 'Touchez') + ' un bloc entouré pour le corriger. Le nouveau texte reprend la taille, la couleur et une police proche de l\'original.'),
+      h('h2', {}, 'Modifier le document'),
+      h('p', { class: 'help' }, T('Cliquez', 'Touchez') + ' un texte entouré pour le corriger : il reprend la taille, la couleur et une police proche de l\'original.'),
+      h('p', { class: 'help' }, T('Cliquez sur une image du document pour la déplacer, la redimensionner ou la supprimer.', 'Touchez deux fois une image du document pour la déplacer, la redimensionner ou la supprimer.')),
       field('Sélectionner par', seg([{ v: 'paragraph', l: 'Paragraphe' }, { v: 'line', l: 'Ligne' }], state.textMode, v => { state.textMode = v; refreshTextLayers(); }, 'Mode de sélection')),
       field('Texte non reconnu ?',
         h('p', { class: 'help' }, 'Pour un scan, une photo ou un texte vectorisé (export Canva, logo…), lancez la lecture automatique de la page affichée.'),
         h('button', { class: 'btn outline', type: 'button', onclick: () => { const p = currentPageObj(); if (p) ocrPage(p); } }, svgIcon(ICONS.scan), 'Lire le texte de cette page'),
         h('span', { class: 'help', 'data-ocr-status': '' })),
+    ];
+  }
+  if (tool === 'fill') {
+    const d = state.textDefaults, F = state.fill;
+    const cb = h('input', { type: 'checkbox' }); cb.checked = F.detect;
+    cb.onchange = () => { F.detect = cb.checked; refreshTextLayers(); };
+    return [
+      h('h2', {}, 'Remplir'),
+      h('p', { class: 'help' }, F.mode === 'mark' ? T('Cliquez sur', 'Touchez') + ' chaque case à cocher ; un second ' + T('clic', 'toucher') + ' sur une case repérée la décoche.'
+        : T('Cliquez sur', 'Touchez') + ' une ligne ou un espace vide pour écrire' + (F.mode === 'auto' ? ', une case pour la cocher' : '') + '. ' + T('Entrée ou Tab passe à la ligne suivante.', 'La touche Entrée du clavier passe à la ligne suivante.')),
+      field('Au ' + T('clic', 'toucher'), seg([{ v: 'auto', l: 'Auto' }, { v: 'text', l: 'Texte' }, { v: 'mark', l: 'Coche' }], F.mode, v => { F.mode = v; refreshTextLayers(); render(true); }, 'Ce que fait un clic')),
+      h('label', { class: 'check-row' }, cb, 'Repérer les lignes et les cases'),
+      ...(F.mode !== 'mark' ? [
+        field('Police', fontSelect(d.font, v => { d.font = v; render(true); })),
+        field('Taille du texte', sizeInput(d.size, v => d.size = v)),
+        field('Couleur', swatches(INK, d.color, c => { d.color = c; state.markColor = c; render(true); }))] : []),
+      ...(F.mode !== 'text' ? [
+        field('Symbole des cases', markSeg(state.markKind, v => state.markKind = v)),
+        ...(F.mode === 'mark' ? [field('Taille', sizeInput(state.markSize || 12, v => state.markSize = v, { min: 4, max: 60, step: 1 })),
+          field('Couleur', swatches(INK, state.markColor || '#111111', c => { state.markColor = c; render(true); }))] : [])] : []),
+      h('div', { class: 'insp-actions' }, actionBtn(ICONS.calendar, 'Insérer la date du jour', () => insertTextAtCenter(todayFr()))),
     ];
   }
   if (tool === 'text') {

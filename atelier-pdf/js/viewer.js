@@ -386,6 +386,10 @@ function textEditor(o) {
   ta.addEventListener('keydown', e => {
     e.stopPropagation();
     if (e.key === 'Escape') { e.preventDefault(); ta.blur(); return; }
+    // remplissage d'un formulaire : Entrée ou Tab valide et passe à la zone suivante (Maj+Entrée : retour à la ligne)
+    if (o.fill && state.tool === 'fill' && ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab')) {
+      e.preventDefault(); emit('fill-next', { id: o.id, dir: e.key === 'Tab' && e.shiftKey ? -1 : 1 }); return;
+    }
     const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
     // Ctrl+Z dans un texte : annule d'abord la frappe ; quand il n'y a plus rien à annuler ici,
     // on sort de la zone de texte et on annule l'action précédente du document

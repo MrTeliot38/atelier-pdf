@@ -4,7 +4,7 @@ Ce dossier fabrique l'APK Android à partir de l'application web du dossier vois
 
 ## Ce que l'application Android ajoute
 
-- **Scanner de documents** : photographier une ou plusieurs feuilles. Les bords sont repérés automatiquement, la perspective est redressée et le papier blanchi (ombres effacées). Chaque page peut être recadrée (coins déplaçables avec loupe), tournée, retirée ou réordonnée. Rendus : Couleur, Document, Gris, Noir et blanc.
+- **Scanner de documents** : photographier une ou plusieurs feuilles. **Prise automatique** : dès que la feuille est repérée et que le téléphone ne bouge plus (environ une seconde), la photo part toute seule ; une case à l'écran permet de revenir au déclenchement manuel. Les bords sont repérés automatiquement, la perspective est redressée et le papier blanchi (ombres effacées). Chaque page peut être recadrée (coins déplaçables avec loupe), tournée, retirée ou réordonnée. Rendus : Couleur, Document, Gris, Noir et blanc.
 - **Qualité du PDF** au choix : faible (≈ 150 ppp, idéal WhatsApp et e-mail), moyenne (≈ 200 ppp) ou élevée (≈ 300 ppp), avec le poids estimé.
 - **Partager** le PDF (WhatsApp, e-mail, Drive, Messages…) par le menu de partage d'Android, l'**enregistrer** dans le dossier de son choix, ou l'**ouvrir dans l'éditeur** pour le modifier, le signer, l'annoter.
 - **Ouvrir avec Atelier PDF** depuis Fichiers, Gmail, WhatsApp… et **Partager vers Atelier PDF** (un PDF s'ouvre dans l'éditeur, des photos ouvrent le scanner).
@@ -18,7 +18,7 @@ Ce dossier fabrique l'APK Android à partir de l'application web du dossier vois
 ## Confidentialité et sécurité
 
 - Aucune donnée n'est envoyée sur Internet : la politique de sécurité de la page interdit toute connexion extérieure.
-- Permissions : appareil photo (demandé à la première utilisation du scanner). Aucune permission de stockage : Android demande à chaque fois où enregistrer.
+- Permissions : appareil photo (demandé à la première utilisation du scanner). Aucune permission de stockage.
 - Sauvegarde automatique Android désactivée (`allowBackup=false`).
 
 ## Construire

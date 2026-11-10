@@ -1,5 +1,5 @@
 // Atelier PDF — point d'entrée : barre d'outils, fichiers, raccourcis, application installable
-import { state, on, emit, h, $, $$, initFonts, undo, redo, canUndo, canRedo, findObject, toast, fmtPages } from './core.js';
+import { state, svgIcon, on, emit, h, $, $$, initFonts, undo, redo, canUndo, canRedo, findObject, toast, fmtPages } from './core.js';
 import { initViewer, setZoom, fitWidth, scrollToPage } from './viewer.js';
 import { initTools, setTool, removeObject, nudge, flushNudge, duplicateObject, armSignature, placeImage, placeSignatureInRect, select } from './tools.js';
 import { initPagesPanel, insertBlankPage, insertionIndex, clearPageSelection } from './pagesPanel.js';
@@ -22,7 +22,7 @@ import { commit } from './core.js';
 import { openScanner, isScannerOpen } from './scanner.js';
 import { isAndroidApp, isTouch, saveBlob, onSaveDone, openDownloads, printPdf, onIncomingFiles, initBackButton, defaultPdfStatus, openAppSettings, openTestPdf, testPdfInDownloads, removeTestPdf, TEST_PDF_NAME } from './platform.js';
 
-const VERSION = '1.10.1';
+const VERSION = '1.11.0';
 const desktop = window.atelierDesktop;
 if (desktop) document.body.classList.add('is-desktop');
 const isMobile = () => window.innerWidth < 860;
@@ -196,7 +196,28 @@ on('current-page', updateIndicator);
 on('pages-changed', updateIndicator);
 
 const mainMenu = $('#mainMenu');
-$('#btnMenu').onclick = e => { e.stopPropagation(); toggleMenu(mainMenu); };
+// icônes du menu, et groupes vides masqués à l'ouverture
+const MENU_ICONS = {
+  scan: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M4 12h16"/>',
+  recents: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/>',
+  merge: '<path d="M7 4v5a5 5 0 0 0 5 5v6M17 4v5a5 5 0 0 1-5 5"/>',
+  newwin: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/>',
+  print: '<path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/>',
+  images: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
+  compress: '<path d="M12 3v6M9 6l3 3 3-3M12 21v-6M9 18l3-3 3 3"/><path d="M4 12h16"/>',
+  flat: '<path d="M4 8l8-4 8 4-8 4z"/><path d="M4 13l8 4 8-4"/>',
+  saveas: '<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3M8 21v-7h8v7"/>',
+  'saveas-android': '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M12 10v6M9.5 13.5L12 16l2.5-2.5"/>',
+  close: '<path d="M6 6l12 12M18 6L6 18"/>',
+  default: '<path d="M6 3h8l4 4v14H6z"/><path d="M9.5 13.5l2 2 3.5-4"/>',
+  install: '<path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/>',
+  updates: '<path d="M20 12a8 8 0 1 1-2.3-5.6"/><path d="M20 4v5h-5"/>',
+  help: '<circle cx="12" cy="12" r="8.5"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.7.4-1 1-1 1.7"/><path d="M12 16.8v.2"/>',
+  about: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.2"/>',
+};
+for (const b of mainMenu.querySelectorAll('button[data-act]')) { const d = MENU_ICONS[b.dataset.act]; if (d) b.prepend(svgIcon(d)); }
+const tidyMenu = () => { for (const g of mainMenu.querySelectorAll('.menu-group')) { g.hidden = false; g.hidden = ![...g.children].some(c => c.offsetParent !== null); } };
+$('#btnMenu').onclick = e => { e.stopPropagation(); toggleMenu(mainMenu); if (!mainMenu.hidden) tidyMenu(); };
 mainMenu.addEventListener('click', async e => {
   const b = e.target.closest('[data-act]'); if (!b) return;
   mainMenu.hidden = true;
@@ -227,7 +248,7 @@ function toggleMenu(m) {
 document.addEventListener('pointerdown', e => { if (!e.target.closest('.menu, #btnMenu, #btnAddPages')) $$('.menu').forEach(x => x.hidden = true); });
 
 /* ------------------------------------------------ raccourcis */
-const TOOL_KEYS = { v: 'select', e: 'edit', t: 'text', s: 'sign', c: 'mark', m: 'mask', h: 'highlight', a: 'annot', r: 'redact' };
+const TOOL_KEYS = { v: 'select', e: 'edit', f: 'fill', t: 'fill', s: 'sign', c: 'fill', m: 'mask', h: 'highlight', a: 'annot', r: 'redact' };
 document.addEventListener('keydown', e => {
   if (isModalOpen()) return;
   const inField = e.target.closest?.('input, textarea, select, [contenteditable]');
@@ -460,12 +481,12 @@ function showHelp() {
     ['Ctrl + O', 'Ouvrir un PDF ou une image'], ['Ctrl + S', desktop ? 'Enregistrer (Ctrl + Maj + S : enregistrer sous)' : 'Télécharger le PDF modifié'], ['Ctrl + P', 'Choisir les pages et imprimer'],
     ['Ctrl + Z / Ctrl + Y', 'Annuler / rétablir'], ['Ctrl + F', 'Rechercher dans le document (Entrée : résultat suivant)'], ['Ctrl + H', 'Rechercher et remplacer'], ['Ctrl + Tab', 'Onglet suivant (Ctrl + W : fermer l\'onglet)'], ['Suppr', 'Effacer l\'élément sélectionné'], ['Flèches', 'Déplacer l\'élément (Maj : plus vite)'],
     ['Ctrl + D', 'Dupliquer l\'élément'], ['Ctrl + molette', 'Zoomer'], ['Échap', 'Désélectionner'],
-    ['V E T S C M R H A', 'Sélection, Modifier le texte, Texte, Signer, Cocher, Masquer, Caviarder, Surligner, Annoter'],
+    ['V E F S M R H A', 'Sélection, Modifier le document, Remplir, Signer, Masquer, Caviarder, Surligner, Annoter'],
   ];
   modal({ title: 'Aide', width: 600, body: [
     h('div', { class: 'prose' },
-      h('p', {}, h('b', {}, 'Corriger un texte : '), 'choisissez « Modifier le texte », puis cliquez sur le paragraphe. Pour un scan ou une photo, cliquez sur « Lire le texte de cette page ».'),
-      h('p', {}, h('b', {}, 'Remplir un formulaire : '), 'les champs prévus dans le PDF apparaissent en bleu clair. Sinon, utilisez « Ajouter du texte » et « Cocher ».'),
+      h('p', {}, h('b', {}, 'Corriger un texte : '), 'choisissez « Modifier le document », puis cliquez sur le paragraphe (ou sur une image pour la déplacer). Pour un scan ou une photo, cliquez sur « Lire le texte de cette page ».'),
+      h('p', {}, h('b', {}, 'Remplir un formulaire : '), 'choisissez « Remplir ». Les champs du PDF, les lignes à compléter et les cases à cocher sont repérés en bleu : cliquez pour écrire ou cocher, Entrée ou Tab passe à la ligne suivante. Un clic ailleurs écrit à cet endroit.'),
       h('p', {}, h('b', {}, 'Cacher une information : '), '« Caviarder » pose un bandeau noir et supprime vraiment le texte dessous à l\'enregistrement (la page devient une image). « Masquer » ne fait que recouvrir.'),
       h('p', {}, h('b', {}, 'Annoter : '), 'flèches, cercles, traits, notes et tampons (« Lu et approuvé », « Urgent », « Reçu le… »).'),
       h('p', {}, h('b', {}, 'Pages : '), 'faites glisser les miniatures pour les réordonner ; cochez-les pour les pivoter, dupliquer, supprimer ou les télécharger seules.')),

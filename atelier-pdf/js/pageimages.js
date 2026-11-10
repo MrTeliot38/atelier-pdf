@@ -156,13 +156,15 @@ export function isPristineLift(o) {
 
 /* ------------------------------------------------ calque des images (mode Sélection) */
 const tokens = new Map();
+// les images du document se prennent avec « Sélection » comme avec « Modifier le document »
+const imgTool = () => state.tool === 'select' || state.tool === 'edit';
 export async function renderImageLayer(pageId) {
   const s = getSlot(pageId); if (!s) return;
   if (!s.imgs) { s.imgs = h('div', { class: 'layer layer-images' }); s.pageEl.insertBefore(s.imgs, s.forms); }
-  if (state.tool !== 'select') { s.imgs.replaceChildren(); return; }
+  if (!imgTool()) { s.imgs.replaceChildren(); return; }
   const token = {}; tokens.set(pageId, token);
   let list = await pageImages(s.page);
-  if (tokens.get(pageId) !== token || state.tool !== 'select') return;
+  if (tokens.get(pageId) !== token || !imgTool()) return;
   // page qui n'est qu'une image (tract aplati, scan) : on repère les dessins qu'elle contient
   const page = s.page;
   const fullImg = list.some(im => im.w * im.h >= page.w * page.h * 0.85);
@@ -171,7 +173,7 @@ export async function renderImageLayer(pageId) {
   const textKnown = hasOcr(page) || (await getLines(page)).kind === 'native';
   if (wanted && !regions && textKnown) {
     regions = await detectRegions(page, { exclude: list.filter(im => im.w * im.h < page.w * page.h * 0.85) });
-    if (tokens.get(pageId) !== token || state.tool !== 'select') return;
+    if (tokens.get(pageId) !== token || !imgTool()) return;
   }
   if (regions) list = [...list, ...regions];
   // le bandeau n'apparaît plus de lui-même à l'ouverture : le repérage se lance depuis le panneau Sélection
@@ -225,7 +227,7 @@ function overlap(a, b) {
   return w > 0 && hh > 0 ? (w * hh) / (a.w * a.h || 1) : 0;
 }
 export function refreshImageLayers() {
-  for (const s of slots.values()) if (isNear(s.page.id) || state.tool !== 'select') renderImageLayer(s.page.id);
+  for (const s of slots.values()) if (isNear(s.page.id) || !imgTool()) renderImageLayer(s.page.id);
 }
 
 export function initPageImages() {

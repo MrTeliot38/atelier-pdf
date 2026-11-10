@@ -146,7 +146,11 @@ async function showCamera() {
   video.muted = true; video.setAttribute('playsinline', '');
   const overlay = h('canvas', { class: 'scan-overlay' });
   const hint = h('p', { class: 'scan-hint' }, 'Préparation de l\'appareil photo…');
-  const stage = h('div', { class: 'scan-stage' }, video, overlay, hint);
+  // prise automatique : la photo part toute seule quand la feuille est repérée et immobile
+  const autoCb = h('input', { type: 'checkbox' }); autoCb.checked = autoShot();
+  autoCb.onchange = () => { try { localStorage.setItem(AUTO_KEY, autoCb.checked ? '1' : '0'); } catch {} };
+  const autoChk = h('label', { class: 'scan-auto', hidden: true }, autoCb, 'Prise automatique');
+  const stage = h('div', { class: 'scan-stage' }, video, overlay, autoChk, hint);
   const flashFx = h('div', { class: 'scan-flash' });
   const torchBtn = iconBtn(I.flash, 'Lampe', null, { hidden: true, 'aria-pressed': 'false' });
   const shutter = h('button', { class: 'scan-shutter', type: 'button', title: 'Prendre la photo', 'aria-label': 'Prendre la photo' }, h('span'));
@@ -162,7 +166,7 @@ async function showCamera() {
     body: [stage, flashFx, gallery, capture],
     foot: [stack, shutter, doneBtn],
   });
-  S.cam = { video, overlay, hint, stack, doneBtn, shutter, capture };
+  S.cam = { video, overlay, hint, stack, doneBtn, shutter, capture, autoCb, flashFx };
   updateCamCounter();
 
   try {
@@ -184,6 +188,7 @@ async function showCamera() {
     }
     hint.textContent = 'Posez la feuille bien à plat, sur un fond qui contraste.';
     shutter.onclick = () => shoot(flashFx);
+    autoChk.hidden = false;
     liveDetect();
   } catch (e) {
     console.warn('Appareil photo', e);
@@ -207,9 +212,17 @@ function updateCamCounter() {
   S.cam.doneBtn.disabled = !n;
 }
 
+const AUTO_KEY = 'atelierpdf.scan.auto';
+function autoShot() { try { return localStorage.getItem(AUTO_KEY) !== '0'; } catch { return true; } }
+
 /** Repérage de la feuille en direct, plusieurs fois par seconde. */
 function liveDetect() {
-  const { video, overlay, hint } = S.cam;
+  const { video, overlay, hint, shutter, autoCb, flashFx } = S.cam;
+  // prise automatique : feuille repérée et immobile pendant ~1 s ; ensuite on attend qu'elle change
+  let prevQ = null, still = 0, waitChange = null;
+  const HOLD = 1000;
+  const dist = (a, b) => Math.max(...a.map((p, i) => Math.hypot(p[0] - b[i][0], p[1] - b[i][1])));
+  const area = q => Math.abs(q.reduce((s, p, i) => { const n = q[(i + 1) % 4]; return s + p[0] * n[1] - n[0] * p[1]; }, 0)) / 2;
   const small = document.createElement('canvas');
   const sctx = small.getContext('2d', { willReadFrequently: true });
   let last = 0, smooth = null, seen = 0;
@@ -239,11 +252,26 @@ function liveDetect() {
       ctx.fillStyle = 'rgba(70,110,255,.18)'; ctx.fill();
       ctx.lineWidth = 3; ctx.strokeStyle = '#7d97ff'; ctx.lineJoin = 'round'; ctx.stroke();
       ctx.restore();
-      hint.textContent = 'Feuille repérée : appuyez sur le déclencheur.';
       hint.classList.add('ok');
+      const auto = autoCb.checked && !shooting;
+      // immobile ? (les coins bougent de moins de 1,5 % de l'image d'une mesure à l'autre)
+      const moved = prevQ && q ? dist(prevQ, q) : 1;
+      if (q) prevQ = q;
+      if (waitChange && q && dist(waitChange, q) > 0.12) waitChange = null; // nouvelle feuille, ou téléphone déplacé
+      if (auto && q && !waitChange && moved < 0.015 && area(q) > 0.18) still += t - (liveDetect.t || t); else still = 0;
+      liveDetect.t = t;
+      if (!auto) hint.textContent = 'Feuille repérée : appuyez sur le déclencheur.';
+      else if (waitChange) hint.textContent = 'Page enregistrée. Présentez la page suivante, ou touchez « Terminer ».';
+      else if (q && area(q) <= 0.18) hint.textContent = 'Approchez-vous de la feuille.';
+      else hint.textContent = still > 150 ? 'Ne bougez plus…' : 'Feuille repérée : tenez le téléphone immobile.';
+      shutter.style.setProperty('--hold', auto && !waitChange ? Math.min(1, still / HOLD).toFixed(2) : '0');
+      if (auto && still >= HOLD) { still = 0; waitChange = q; shutter.style.setProperty('--hold', '0'); shoot(flashFx); }
     } else {
       hint.textContent = 'Posez la feuille bien à plat, sur un fond qui contraste.';
       hint.classList.remove('ok');
+      still = 0; prevQ = null; shutter.style.setProperty('--hold', '0');
+      if (!seen) waitChange = null; // la feuille a quitté le cadre
+      liveDetect.t = t;
     }
   };
   camTimer = requestAnimationFrame(loop);
