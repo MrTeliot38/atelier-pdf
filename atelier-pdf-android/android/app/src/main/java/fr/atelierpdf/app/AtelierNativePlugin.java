@@ -191,6 +191,7 @@ public class AtelierNativePlugin extends Plugin {
             File f = pendingSaveFile();
             try (FileOutputStream fos = new FileOutputStream(f)) { fos.write(bytes); }
         } catch (Exception e) { call.reject("Préparation impossible : " + e.getMessage()); return; }
+        getContext().getSharedPreferences("atelier", Context.MODE_PRIVATE).edit().putString("nomEnAttente", name).apply();
         Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
         i.addCategory(Intent.CATEGORY_OPENABLE);
         i.setType(mime);
@@ -218,13 +219,21 @@ public class AtelierNativePlugin extends Plugin {
         new Thread(() -> {
             JSObject ret = new JSObject();
             try {
-                long written = copyToUri(src, uri);
-                if (written != src.length()) throw new Exception("copie incomplète (" + written + " octets sur " + src.length() + ")");
+                try {
+                    copyToUri(src, uri);
+                } catch (Exception e) {
+                    // l'emplacement choisi refuse l'écriture : on n'y laisse pas de fichier vide,
+                    // et le document est enregistré dans Téléchargements
+                    deleteDocument(uri);
+                    if (Build.VERSION.SDK_INT < 29) throw e;
+                    String name = insertInDownloads(src, pendingName(), "application/pdf");
+                    ret.put("fallback", true);
+                    ret.put("name", name);
+                }
                 ret.put("saved", true);
-                ret.put("size", written);
+                ret.put("size", src.length());
                 if (call != null) call.resolve(ret); else notifyListeners("saveDone", ret, true);
             } catch (Exception e) {
-                deleteEmptyDocument(uri);
                 if (call != null) call.reject("Impossible d'enregistrer : " + e.getMessage());
                 else { ret.put("saved", false); ret.put("error", String.valueOf(e.getMessage())); notifyListeners("saveDone", ret, true); }
             } finally {
@@ -233,21 +242,94 @@ public class AtelierNativePlugin extends Plugin {
         }).start();
     }
 
-    /** Écrit le fichier dans le document choisi ; certains services (Drive…) refusent le mode « wt ». */
-    private long copyToUri(File src, Uri uri) throws Exception {
+    private String pendingName() {
+        return getContext().getSharedPreferences("atelier", Context.MODE_PRIVATE).getString("nomEnAttente", "document.pdf");
+    }
+
+    /* ---------------- enregistrer directement dans Téléchargements ---------------- */
+    /** Sans sélecteur de fichiers : le document est écrit dans Téléchargements, puis relu pour vérifier sa taille. */
+    @PluginMethod
+    public void saveToDownloads(PluginCall call) {
+        final String name = safeName(call.getString("name", "document.pdf"));
+        final String mime = call.getString("mime", "application/pdf");
+        final String data = call.getString("data");
+        if (data == null || data.isEmpty()) { call.reject("Aucune donnée à enregistrer"); return; }
+        if (Build.VERSION.SDK_INT < 29) { call.reject("ANCIEN_ANDROID"); return; }
+        new Thread(() -> {
+            File tmp = new File(getContext().getCacheDir(), "enregistrement-direct.bin");
+            try {
+                byte[] bytes = Base64.decode(data, Base64.DEFAULT);
+                if (bytes.length == 0) throw new Exception("document vide");
+                try (FileOutputStream fos = new FileOutputStream(tmp)) { fos.write(bytes); }
+                String saved = insertInDownloads(tmp, name, mime);
+                JSObject r = new JSObject();
+                r.put("saved", true);
+                r.put("name", saved);
+                r.put("size", bytes.length);
+                call.resolve(r);
+            } catch (Exception e) {
+                call.reject("Impossible d'enregistrer : " + e.getMessage());
+            } finally { tmp.delete(); }
+        }).start();
+    }
+
+    /** Écrit src dans Téléchargements ; renvoie le nom final (Android ajoute « (1) » si le nom existe). */
+    private String insertInDownloads(File src, String name, String mime) throws Exception {
         ContentResolver cr = getContext().getContentResolver();
+        ContentValues v = new ContentValues();
+        v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+        v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+        v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
+        v.put(MediaStore.MediaColumns.IS_PENDING, 1);
+        Uri uri = cr.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, v);
+        if (uri == null) throw new Exception("dossier Téléchargements indisponible");
+        try {
+            writeAndVerify(cr, uri, src);
+            v.clear();
+            v.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            cr.update(uri, v, null, null);
+        } catch (Exception e) {
+            try { cr.delete(uri, null, null); } catch (Exception ignored) { }
+            throw e;
+        }
+        String finalName = name;
+        try (Cursor c = cr.query(uri, new String[] { MediaStore.MediaColumns.DISPLAY_NAME }, null, null, null)) {
+            if (c != null && c.moveToFirst() && !c.isNull(0)) finalName = c.getString(0);
+        } catch (Exception ignored) { }
+        return finalName;
+    }
+
+    /** Écrit par descripteur de fichier (vidé, écrit, synchronisé), puis relit la taille réellement enregistrée. */
+    private void writeAndVerify(ContentResolver cr, Uri uri, File src) throws Exception {
         Exception last = null;
-        for (String mode : new String[] { "wt", "w", "rwt" }) {
-            try (OutputStream os = cr.openOutputStream(uri, mode); InputStream in = new FileInputStream(src)) {
-                if (os == null) throw new Exception("flux indisponible");
-                byte[] buf = new byte[256 * 1024];
-                long total = 0; int n;
-                while ((n = in.read(buf)) > 0) { os.write(buf, 0, n); total += n; }
-                os.flush();
-                return total;
+        for (String mode : new String[] { "rwt", "wt", "w" }) {
+            try (ParcelFileDescriptor pfd = cr.openFileDescriptor(uri, mode)) {
+                if (pfd == null) throw new Exception("accès refusé");
+                try (FileOutputStream os = new FileOutputStream(pfd.getFileDescriptor()); InputStream in = new FileInputStream(src)) {
+                    try { os.getChannel().truncate(0); } catch (Exception ignored) { }
+                    byte[] buf = new byte[256 * 1024]; int n;
+                    while ((n = in.read(buf)) > 0) os.write(buf, 0, n);
+                    os.flush();
+                    try { os.getFD().sync(); } catch (Exception ignored) { }
+                }
+                last = null;
+                break;
             } catch (Exception e) { last = e; }
         }
-        throw last != null ? last : new Exception("écriture impossible");
+        if (last != null) throw last;
+        long size = -1;
+        try (ParcelFileDescriptor pfd = cr.openFileDescriptor(uri, "r")) { if (pfd != null) size = pfd.getStatSize(); }
+        catch (Exception ignored) { }
+        // certains services en ligne n'annoncent pas la taille (-1) : seul un fichier réellement vide est une erreur
+        if (size == 0 || (size > 0 && size != src.length())) throw new Exception("le fichier enregistré est incomplet (" + size + " octets sur " + src.length() + ")");
+    }
+
+    private void copyToUri(File src, Uri uri) throws Exception {
+        writeAndVerify(getContext().getContentResolver(), uri, src);
+    }
+
+    private void deleteDocument(Uri uri) {
+        try { android.provider.DocumentsContract.deleteDocument(getContext().getContentResolver(), uri); } catch (Exception ignored) { }
     }
 
     /** Annulation ou échec : on ne laisse pas un document vide de 0 Ko derrière soi. */
@@ -694,6 +776,16 @@ public class AtelierNativePlugin extends Plugin {
             getActivity().startActivity(i);
             call.resolve();
         } catch (Exception e) { call.reject("Aucun navigateur"); }
+    }
+
+    @PluginMethod
+    public void openDownloads(PluginCall call) {
+        try {
+            Intent i = new Intent(DownloadManager.ACTION_VIEW_DOWNLOADS);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getActivity().startActivity(i);
+            call.resolve();
+        } catch (Exception e) { call.reject("Application Fichiers introuvable"); }
     }
 
     private static String safeName(String n) {

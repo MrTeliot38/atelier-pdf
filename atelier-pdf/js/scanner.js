@@ -1,6 +1,6 @@
 // Scanner de documents : photographier une ou plusieurs feuilles, les redresser et les nettoyer,
 // en faire un PDF (qualité faible, moyenne ou élevée), puis le partager.
-import { h, toast, svgIcon, ICONS, PDFLib, downloadBlob } from './core.js';
+import { savedToast, h, toast, svgIcon, ICONS, PDFLib, downloadBlob } from './core.js';
 import { detectQuad, QUALITIES, pdfPageSize } from './scancore.js';
 import { isAndroidApp, isDesktopApp, saveBlob, shareBlob, canShareFiles, pushBack } from './platform.js';
 import { confirmDialog } from './ui.js';
@@ -552,7 +552,7 @@ function showDone() {
   } }, svgIcon(I.share), h('span', {}, h('b', {}, 'Partager'), h('small', {}, 'WhatsApp, e-mail, Drive, Messages…'))));
   actions.push(h('button', { class: 'scan-act' + (share ? '' : ' primary'), type: 'button', onclick: async () => {
     try {
-      if (isAndroidApp) { if (await saveBlob(blob(), fileName())) { S.exported = true; toast('PDF enregistré.'); } }
+      if (isAndroidApp) { if (await saveBlob(blob(), fileName())) { S.exported = true; savedToast('PDF enregistré.'); } }
       else { downloadBlob(blob(), fileName()); S.exported = true; toast('PDF téléchargé.'); }
     } catch (e) { console.error(e); toast('L\'enregistrement n\'a pas abouti.', { error: true }); }
   } }, svgIcon(I.save), h('span', {}, h('b', {}, isAndroidApp ? 'Enregistrer sur le téléphone' : 'Télécharger'), h('small', {}, isAndroidApp ? 'Choisissez le dossier : Téléchargements, Documents, Drive…' : 'Dans le dossier des téléchargements'))));

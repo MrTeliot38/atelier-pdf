@@ -1,5 +1,5 @@
 // Enregistrement (application Windows) et partage par e-mail / WhatsApp
-import { state, emit, h, toast, svgIcon, downloadBlob } from './core.js';
+import { savedToast, state, emit, h, toast, svgIcon, downloadBlob } from './core.js';
 import { modal } from './ui.js';
 import { buildPdf, buildFlatPdf, downloadPdf } from './export.js';
 import { canShareFiles, shareBlob, isAndroidApp } from './platform.js';
@@ -94,7 +94,7 @@ export function openShareDialog() {
   } else {
     if (sys) actions.push(['share', 'Partager…', 'E-mail, WhatsApp, Messages et les autres applications de l\'appareil.', run('Préparation…', systemShare)]);
     if (isAndroidApp) actions.push(['download', 'Enregistrer sur le téléphone', 'Choisissez le dossier : Téléchargements, Documents, Drive…', run('Préparation…', async () => {
-      if (await downloadBlob(new Blob([await bytes()], { type: 'application/pdf' }), fileName())) toast('PDF enregistré.');
+      if (await downloadBlob(new Blob([await bytes()], { type: 'application/pdf' }), fileName())) savedToast('PDF enregistré.');
     })]);
     actions.push(['mail', 'E-mail', sys ? 'Choisissez votre messagerie dans la liste.' : 'Télécharge le PDF et ouvre un nouveau message : joignez-y le fichier.', run('Préparation…', async () => {
       if (sys) return systemShare();

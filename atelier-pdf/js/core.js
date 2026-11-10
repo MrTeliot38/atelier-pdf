@@ -106,6 +106,9 @@ export function hexToRgb(hex) {
 export function rgbToHex(r, g, b) { return '#' + [r, g, b].map(v => clamp(Math.round(v), 0, 255).toString(16).padStart(2, '0')).join(''); }
 export function pdfColor(hex) { const { r, g, b } = hexToRgb(hex); return PDFLib.rgb(r / 255, g / 255, b / 255); }
 
+/** Message « enregistré » : dans l'application Android, c'est l'application qui l'affiche (avec le dossier). */
+export function savedToast(msg) { if (!window.__atelierSave) toast(msg); }
+
 /* --------------------------------------------------------- toasts */
 export function toast(msg, opts = {}) {
   const root = $('#toasts');

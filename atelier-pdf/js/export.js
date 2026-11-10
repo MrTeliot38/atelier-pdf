@@ -1,6 +1,6 @@
 // Fabrication du PDF final, impression des pages choisies, export en images
 import { arrowHead } from './viewer.js';
-import { state, emit, PDFLib, fontkit, pdfjsLib, PDFJS_OPTS, h, toast, downloadBlob, layoutText, ASC, pdfColor, mul, inv, sanitize, sleep, fmtPages, STD_FONTS, customVariant, variantKey } from './core.js';
+import { savedToast, state, emit, PDFLib, fontkit, pdfjsLib, PDFJS_OPTS, h, toast, downloadBlob, layoutText, ASC, pdfColor, mul, inv, sanitize, sleep, fmtPages, STD_FONTS, customVariant, variantKey } from './core.js';
 import { modal, pagePicker, summaryText } from './ui.js';
 import { facesFromBytes } from './fontnames.js';
 import { thumbFor } from './pagesPanel.js';
@@ -249,7 +249,7 @@ export async function downloadPdf(pageIds = null, suffix = '-modifié') {
     const saved = await downloadBlob(new Blob([bytes], { type: 'application/pdf' }), fileName(suffix));
     if (saved === false) return;
     if (!pageIds) emit('pdf-saved', { bytes, name: fileName(suffix) });
-    toast(window.atelierDesktop || window.__atelierSave ? 'PDF enregistré.' : 'PDF enregistré dans vos téléchargements.');
+    savedToast(window.atelierDesktop ? 'PDF enregistré.' : 'PDF enregistré dans vos téléchargements.');
     state.dirty = false;
   } catch (e) {
     console.error(e); t.remove();
@@ -292,7 +292,7 @@ export async function downloadFlattened() {
     }
     t.remove();
     if (await downloadBlob(new Blob([bytes], { type: 'application/pdf' }), fileName('-aplati')) === false) return;
-    toast('PDF aplati enregistré : le texte n\'y est plus sélectionnable.');
+    savedToast('PDF aplati enregistré : le texte n\'y est plus sélectionnable.');
   } catch (e) { console.error(e); t.remove(); toast('L\'export a échoué : ' + e.message, { error: true }); }
 }
 
@@ -415,5 +415,5 @@ async function exportImages(nums, fmt, dpi, q, progress) {
   }
   progress(1);
   if (saved === false) return;
-  toast(files.length === 1 ? 'Image enregistrée.' : `${fmtPages(files.length)} exportées dans une archive .zip.`);
+  savedToast(files.length === 1 ? 'Image enregistrée.' : `${fmtPages(files.length)} exportées dans une archive .zip.`);
 }

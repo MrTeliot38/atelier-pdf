@@ -20,9 +20,9 @@ import { savePdf, openShareDialog } from './share.js';
 import { modal, confirmDialog, isModalOpen } from './ui.js';
 import { commit } from './core.js';
 import { openScanner, isScannerOpen } from './scanner.js';
-import { isAndroidApp, isTouch, saveBlob, onSaveDone, printPdf, onIncomingFiles, initBackButton, defaultPdfStatus, openAppSettings, openTestPdf, testPdfInDownloads, removeTestPdf, TEST_PDF_NAME } from './platform.js';
+import { isAndroidApp, isTouch, saveBlob, onSaveDone, openDownloads, printPdf, onIncomingFiles, initBackButton, defaultPdfStatus, openAppSettings, openTestPdf, testPdfInDownloads, removeTestPdf, TEST_PDF_NAME } from './platform.js';
 
-const VERSION = '1.10.0';
+const VERSION = '1.10.1';
 const desktop = window.atelierDesktop;
 if (desktop) document.body.classList.add('is-desktop');
 const isMobile = () => window.innerWidth < 860;
@@ -209,6 +209,7 @@ mainMenu.addEventListener('click', async e => {
   if (act === 'compress') openCompressDialog();
   if (act === 'recents') openRecentsDialog();
   if (act === 'updates') openUpdateDialog();
+  if (act === 'saveas-android') window.__atelierSaveAs?.();
   if (act === 'saveas') savePdf(true);
   if (act === 'newwin') desktop?.newWindow();
   if (act === 'default') defaultReaderDialog();
@@ -304,6 +305,22 @@ if (isAndroidApp) {
     try { return await saveBlob(blob, name); }
     catch (e) { console.error(e); toast('L\'enregistrement n\'a pas abouti : ' + (e.message || e), { error: true, duration: 9000 }); return false; }
   };
+  // un seul message après enregistrement, avec l'endroit où se trouve le fichier
+  window.addEventListener('atelier-saved', e => {
+    const d = e.detail || {};
+    if (d.fallback) toast(`Cet emplacement a refusé l'enregistrement : « ${d.name} » est dans Téléchargements.`, { duration: 12000, action: { label: 'Ouvrir le dossier', fn: openDownloads } });
+    else if (d.inDownloads) toast(`Enregistré dans Téléchargements : « ${d.name} »`, { duration: 9000, action: { label: 'Ouvrir le dossier', fn: openDownloads } });
+    else toast('Enregistré.');
+  });
+  window.__atelierSaveAs = async () => {
+    const t = toast('Préparation du PDF…', { duration: 60000 });
+    try {
+      const { buildPdf, fileName } = await import('./export.js');
+      const bytes = await buildPdf(null); t.remove();
+      if (await saveBlob(new Blob([bytes], { type: 'application/pdf' }), fileName('-modifié'), { choose: true })) state.dirty = false;
+    } catch (e) { console.error(e); t.remove(); toast('L\'enregistrement n\'a pas abouti : ' + (e.message || e), { error: true, duration: 9000 }); }
+  };
+  for (const el of document.querySelectorAll('[data-act="saveas-android"]')) el.hidden = false;
   onSaveDone(r => r?.saved ? toast('PDF enregistré.') : toast('L\'enregistrement n\'a pas abouti' + (r?.error ? ' : ' + r.error : '.'), { error: true }));
   window.__atelierPrint = (bytes, name) => printPdf(bytes, name).catch(e => toast('Impression impossible : ' + (e.message || e), { error: true }));
   $('#btnDownload .lbl').textContent = 'Enregistrer';

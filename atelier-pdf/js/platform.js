@@ -22,12 +22,24 @@ export function blobToBase64(blob) {
 const mimeOf = name => /\.pdf$/i.test(name) ? 'application/pdf' : /\.zip$/i.test(name) ? 'application/zip' : /\.png$/i.test(name) ? 'image/png' : /\.jpe?g$/i.test(name) ? 'image/jpeg' : 'application/octet-stream';
 
 /** Android : Android demande où enregistrer (Téléchargements, Drive…). Renvoie true si enregistré. */
-export async function saveBlob(blob, name) {
+export async function saveBlob(blob, name, { choose = false } = {}) {
   if (!native) return false;
   if (!blob || !blob.size) throw new Error('le document à enregistrer est vide');
-  const r = await native.saveAs({ name, mime: blob.type || mimeOf(name), data: await blobToBase64(blob) });
-  return !!(r && r.saved);
+  const args = { name, mime: blob.type || mimeOf(name), data: await blobToBase64(blob) };
+  if (!args.data) throw new Error('le document n\'a pas pu être lu');
+  let r = null;
+  // par défaut : directement dans Téléchargements (écriture vérifiée) ; « Enregistrer sous » : Android demande où
+  if (!choose) {
+    try { r = await native.saveToDownloads(args); }
+    catch (e) { if (!/ANCIEN_ANDROID/.test(e?.message || '')) throw e; }
+  }
+  if (!r) r = await native.saveAs(args);
+  if (!(r && r.saved)) return false;
+  const inDownloads = !choose && r.name || r.fallback;
+  window.dispatchEvent(new CustomEvent('atelier-saved', { detail: { name: r.name || name, inDownloads: !!inDownloads, fallback: !!r.fallback } }));
+  return true;
 }
+export const openDownloads = () => native?.openDownloads?.().catch(() => {});
 
 export function canShareFiles() {
   if (native) return true;

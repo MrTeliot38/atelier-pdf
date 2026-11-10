@@ -1,7 +1,7 @@
 // Impression avec aperçu : choix des pages, pages par feuille, livret, format du papier,
 // orientation, mise à l'échelle, marges, en-tête et pied de page ; dans l'application Windows,
 // imprimante, copies, recto verso et couleur.
-import { state, h, $, toast, PDFLib, pdfjsLib, PDFJS_OPTS, downloadBlob } from './core.js';
+import { savedToast, state, h, $, toast, PDFLib, pdfjsLib, PDFJS_OPTS, downloadBlob } from './core.js';
 import { modal, parseRange } from './ui.js';
 import { buildPdf, printBytes, fileName } from './export.js';
 
@@ -403,7 +403,7 @@ export async function openPrintDialog() {
       const out = await composePdf(bytes, lay, o);
       const name = fileName('-impression');
       if (desktop) { const p = await desktop.saveAs(name, out, state.filePath); if (p) toast('PDF enregistré.'); }
-      else if (await downloadBlob(new Blob([out], { type: 'application/pdf' }), name) !== false) toast('PDF enregistré.');
+      else if (await downloadBlob(new Blob([out], { type: 'application/pdf' }), name) !== false) savedToast('PDF enregistré.');
     } catch (e) { console.error(e); toast('Enregistrement impossible : ' + e.message, { error: true }); }
     done();
   };

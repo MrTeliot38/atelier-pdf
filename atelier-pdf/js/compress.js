@@ -1,6 +1,6 @@
 // Réduire la taille d'un PDF : les images trop grandes sont réduites et recompressées, le texte reste du
 // texte (sélectionnable, net à l'impression). En option : toutes les pages converties en images.
-import { state, h, toast, PDFLib, pdfjsLib, PDFJS_OPTS, downloadBlob } from './core.js';
+import { savedToast, state, h, toast, PDFLib, pdfjsLib, PDFJS_OPTS, downloadBlob } from './core.js';
 import { modal } from './ui.js';
 import { buildPdf } from './export.js';
 import { canShareFiles, shareBlob, isAndroidApp, saveBlob } from './platform.js';
@@ -133,8 +133,8 @@ export function openCompressDialog() {
   const saveBtn = h('button', { class: 'btn outline', type: 'button', hidden: true, onclick: async () => {
     const blob = new Blob([result], { type: 'application/pdf' });
     try {
-      if (window.atelierDesktop) { const p = await window.atelierDesktop.saveAs(fname(), result, state.filePath); if (p) toast('PDF allégé enregistré.'); }
-      else if (isAndroidApp) { if (await saveBlob(blob, fname())) toast('PDF allégé enregistré.'); }
+      if (window.atelierDesktop) { const p = await window.atelierDesktop.saveAs(fname(), result, state.filePath); if (p) savedToast('PDF allégé enregistré.'); }
+      else if (isAndroidApp) { if (await saveBlob(blob, fname())) savedToast('PDF allégé enregistré.'); }
       else { downloadBlob(blob, fname()); toast('PDF allégé téléchargé.'); }
     } catch (e) { toast('Enregistrement impossible : ' + (e.message || e), { error: true }); }
   } }, window.atelierDesktop || isAndroidApp ? 'Enregistrer…' : 'Télécharger');
