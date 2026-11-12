@@ -253,11 +253,11 @@ function createWindow() {
 
   // liens externes dans le navigateur par défaut
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^(https|mailto):/i.test(url)) { shell.openExternal(url); return { action: 'deny' }; }
+    if (/^(https?|mailto|tel):/i.test(url)) { shell.openExternal(url); return { action: 'deny' }; }
     if (url.startsWith('blob:')) return { action: 'allow', overrideBrowserWindowOptions: { autoHideMenuBar: true, title: 'Atelier PDF' } };
     return { action: 'deny' };
   });
-  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('app://atelier/')) { e.preventDefault(); if (/^(https|mailto):/i.test(url)) shell.openExternal(url); } });
+  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('app://atelier/')) { e.preventDefault(); if (/^(https?|mailto|tel):/i.test(url)) shell.openExternal(url); } });
   win.webContents.on('will-attach-webview', e => e.preventDefault());
 
   win.on('close', e => {

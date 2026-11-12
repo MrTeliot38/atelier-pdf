@@ -766,6 +766,21 @@ public class AtelierNativePlugin extends Plugin {
         }).start();
     }
 
+    /** Lien d'un document : ouvert dans le navigateur, la messagerie ou le téléphone (web, mail, tél. seulement). */
+    @PluginMethod
+    public void openLink(PluginCall call) {
+        String u = call.getString("url", "");
+        String low = u.toLowerCase();
+        if (!(low.startsWith("https://") || low.startsWith("http://") || low.startsWith("mailto:") || low.startsWith("tel:"))) { call.reject("Adresse refusée"); return; }
+        try {
+            Intent i = new Intent(low.startsWith("tel:") ? Intent.ACTION_DIAL : Intent.ACTION_VIEW, Uri.parse(u));
+            i.addCategory(Intent.CATEGORY_BROWSABLE);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getActivity().startActivity(i);
+            call.resolve();
+        } catch (Exception e) { call.reject("Aucune application pour ouvrir ce lien"); }
+    }
+
     @PluginMethod
     public void openUrl(PluginCall call) {
         String u = call.getString("url", "");

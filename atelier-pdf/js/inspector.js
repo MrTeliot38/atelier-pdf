@@ -341,6 +341,7 @@ function toolPanel(tool) {
   if (tool === 'select') {
     return [
       h('h2', {}, 'Sélection'),
+      h('p', { class: 'help' }, T('Faites glisser la souris sur le texte du document pour le sélectionner, puis Ctrl+C pour le copier. Un clic sur un lien l\'ouvre.', 'Restez appuyé sur un mot du document pour sélectionner le texte, puis « Copier ». Touchez un lien pour l\'ouvrir.')),
       h('p', { class: 'help' }, T('Cliquez sur un élément ajouté (texte, signature, coche…) ou sur une image du document pour le sélectionner, puis faites-le glisser pour le déplacer.', 'Touchez un élément ajouté (texte, signature, coche…) ou une image du document pour le sélectionner, puis faites-le glisser pour le déplacer.')),
       h('p', { class: 'help' }, T('Double-cliquez sur un texte pour l\'écrire. Pour l\'image d\'une page entière (scan, photo), faites-la glisser ou double-cliquez dessus.', 'Touchez deux fois un texte pour l\'écrire. Deux doigts pour zoomer.')),
       h('p', { class: 'help' }, T('Suppr efface l\'élément sélectionné ; Ctrl+Z ou le bouton Annuler revient en arrière.', 'Le bouton Annuler, en haut, revient en arrière.')),

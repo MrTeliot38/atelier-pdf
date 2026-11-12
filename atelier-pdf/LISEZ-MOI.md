@@ -5,6 +5,7 @@ Tout le traitement se fait sur l'appareil de la personne : aucun document n'est 
 
 ## Ce que fait l'outil
 
+- **Lire, copier, suivre les liens** (outil Sélection) : le texte du document se sélectionne (glisser à la souris, appui long au doigt) et se copie ; les liens s'ouvrent d'un clic (site, adresse mail, renvoi vers une autre page), y compris les adresses écrites en clair (www…, nom@domaine).
 - **Modifier le document** (texte et images existants) : cliquez sur un paragraphe (ou une ligne) pour le corriger. Le nouveau texte reprend la taille, la couleur, l'alignement et une police proche de l'original ; le texte d'origine est recouvert par un fond de la couleur détectée.
 - **Scans et photos** : bouton « Lire le texte de cette page » (reconnaissance de caractères en français, sans connexion une fois chargée). Fonctionne aussi pour les textes vectorisés (exports Canva, logos).
 - **Remplir** : un seul outil pour les formulaires. Les champs du PDF, mais aussi les lignes à compléter et les cases à cocher d'un document sans champs (formulaire scanné, bulletin imprimé) sont repérés automatiquement : un clic sur une ligne pour écrire, sur une case pour la cocher (✓, ✗ ou ●), Entrée ou Tab pour passer à la ligne suivante. Un clic ailleurs écrit à l'endroit choisi ; date du jour en un clic.

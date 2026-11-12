@@ -9,7 +9,7 @@ import { textErasePatch } from './inpaint.js';
 import { detectFields } from './formdetect.js';
 
 const TOOL_HINTS = {
-  select: 'Cliquez sur une image du document ou un élément ajouté pour le sélectionner et le déplacer ; double-cliquez sur un texte pour l\'écrire. Suppr pour l\'effacer, Ctrl+Z pour annuler.',
+  select: 'Glissez sur le texte pour le sélectionner et le copier, cliquez sur un lien pour l\'ouvrir. Cliquez sur une image du document ou un élément ajouté pour le sélectionner et le déplacer ; double-cliquez sur un texte pour l\'écrire. Suppr pour l\'effacer, Ctrl+Z pour annuler.',
   edit: 'Cliquez sur un texte du document pour le corriger, ou sur une image pour la déplacer, la redimensionner ou la supprimer.',
   fill: 'Cliquez sur une ligne ou dans une zone pour écrire, sur une case pour la cocher. Entrée ou Tab passe à la zone suivante.',
   text: 'Cliquez à l\'endroit où écrire.',
@@ -225,6 +225,11 @@ function onDown(e) {
   const pageId = pageOfElement(e.target); if (!pageId) return;
   const page = pageById(pageId);
   if (e.target.closest('.ff, .ff-check, .ff-sig, .ocr-banner, textarea.editor')) return;
+  // mode Sélection : texte du document à sélectionner (appui long / glisser) ou lien à ouvrir
+  if (state.tool === 'select' && !e.target.closest('.obj') && e.target.closest('.sel-layer .textLayer span, .pdf-link')) {
+    if (state.selected) select(null);
+    return;
+  }
   // un clic sur le document reprend le clavier (Suppr, flèches, Ctrl+Z…), même si une case du panneau avait le curseur
   const ae = document.activeElement;
   if (state.editing || (ae && ae !== document.body && ae.matches('input, select, textarea, button, [contenteditable]'))) ae.blur();
