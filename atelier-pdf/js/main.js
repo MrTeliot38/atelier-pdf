@@ -23,7 +23,7 @@ import { commit } from './core.js';
 import { openScanner, isScannerOpen } from './scanner.js';
 import { isAndroidApp, isTouch, saveBlob, onSaveDone, openDownloads, printPdf, onIncomingFiles, initBackButton, defaultPdfStatus, openAppSettings, openTestPdf, testPdfInDownloads, removeTestPdf, TEST_PDF_NAME } from './platform.js';
 
-const VERSION = '1.11.1';
+const VERSION = '1.12.0';
 const desktop = window.atelierDesktop;
 if (desktop) document.body.classList.add('is-desktop');
 const isMobile = () => window.innerWidth < 860;

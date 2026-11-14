@@ -1,9 +1,10 @@
 // Outils et interactions sur les pages : sélection, déplacement, texte, coches, masques, signatures
-import { state, on, emit, h, $, uid, clamp, commit, undo, findObject, pageById, ASC, toast, svgIcon, ICONS, STD_FONTS } from './core.js';
+import { state, on, emit, h, $, uid, clamp, commit, undo, findObject, pageById, ASC, toast, svgIcon, ICONS, STD_FONTS, cssFamily, cssWeightStyle } from './core.js';
 import { getSlot, pagePoint, renderObjects, slots, pagesEl, mat, pageOfElement, isNear, currentPageObj, scrollToPage, shapeSvg } from './viewer.js';
 import { getBlocks, runOcr, sampleColors, looksBold } from './textdetect.js';
 import { matchSystemFont, loadSystemFamily } from './systemfonts.js';
-import { guessFont, MATCH_THRESHOLD } from './fontmatch.js';
+import { guessFont, MATCH_THRESHOLD, fontIdForGuess } from './fontmatch.js';
+import { adoptDocumentFont } from './docfont.js';
 import { liftImage, renderImageLayer, findRegions } from './pageimages.js';
 import { textErasePatch } from './inpaint.js';
 import { detectFields } from './formdetect.js';
@@ -112,6 +113,7 @@ function fillField(page, f, p) {
   const o = { id: uid(), type: 'text', x, y: f.y - 1.6 - size * (0.9 + (d.lineHeight - 1) / 2), w: Math.max(40, f.x + f.w - x - 2), h: size * d.lineHeight, text: '', ...d, size, fill: true, fillKey: key };
   page.objects.push(o);
   startEditing(o.id);
+  matchDocumentFont(page, o, x, f.y - size / 2);
 }
 /** Entrée ou Tab dans un texte de remplissage : zone suivante (ou précédente) de la page. */
 async function fillNext({ id, dir }) {
@@ -487,12 +489,27 @@ function addText(page, p) {
   if (state.tool === 'fill') o.fill = true;
   page.objects.push(o);
   startEditing(o.id);
+  matchDocumentFont(page, o, p.x, p.y);
+}
+/** Texte ajouté : reprend la police du texte voisin dès qu'elle est reconnue (sans gêner la saisie). */
+function matchDocumentFont(page, o, x, y) {
+  adoptDocumentFont(page, o.id, x, y, patch => {
+    const f = findObject(o.id); if (!f) return;
+    Object.assign(f.obj, patch);
+    const ta = state.editing === o.id && getSlot(f.page.id)?.objs.querySelector('textarea.editor');
+    if (ta) {
+      // en cours de saisie : on change seulement l'apparence de la zone (la recréer ferait perdre le curseur)
+      const ws = cssWeightStyle(f.obj);
+      ta.style.font = `${ws.style} ${ws.weight} ${f.obj.size * state.zoom}px/${f.obj.lineHeight} ${cssFamily(f.obj)}`;
+    } else { renderObjects(f.page.id); emit('object-updated', o.id); }
+  });
 }
 export function insertTextAtCenter(text) {
   const page = currentPageObj(); if (!page) return;
   const d = state.textDefaults;
   const o = { id: uid(), type: 'text', x: page.w / 2 - 60, y: page.h / 3, w: 160, h: d.size * d.lineHeight, text, ...d };
   page.objects.push(o); commit(); select(o.id);
+  matchDocumentFont(page, o, o.x, o.y);
   scrollIntoViewObj(page);
 }
 function addMark(page, p) {
@@ -543,8 +560,7 @@ function scrollIntoViewObj(page) { if (!isNear(page.id)) scrollToPage(page.id); 
 
 /** Police à utiliser pour une proposition de la reconnaissance visuelle. */
 export async function fontFromGuess(g) {
-  if (g.std) return { font: g.std, bold: g.bold, italic: g.italic };
-  return { font: await loadSystemFamily(g.name), bold: g.bold, italic: g.italic };
+  return { font: await fontIdForGuess(g), bold: g.bold, italic: g.italic };
 }
 const STD_NAME = /^(arial|helvetica|times|timesnewroman|courier|couriernew)/i;
 
@@ -576,25 +592,25 @@ export async function buildEditObject(page, b, { budgetMs = 2500, fontCache = nu
   const coverRect = { x: b.x - 1.5, y: b.top - up, w: b.w + 3, h: b.bottom - b.top + 1.5 + up };
   const patchP = textErasePatch(page, coverRect, colors.fg, colors.bg);
   // police inconnue (scan, photo, ou police absente de l'ordinateur) : reconnaissance visuelle, sinon Arial
-  let font = sysFont || b.font, bold = b.bold, italic = b.italic, guesses;
+  let font = sysFont || b.font, bold = b.bold, italic = b.italic, guesses, recognized = false;
   const pdfBase = (b.pdfName || '').replace(/^[A-Z]{6}\+/, '').replace(/[^a-z]/gi, '');
   const fkey = (b.pdfName || (b.ocr ? 'ocr' : b.font)) + '|' + Math.round(b.size) + '|' + !!b.bold;
-  if (fontCache && fontCache.has(fkey)) ({ font, bold, italic, guesses } = fontCache.get(fkey));
+  if (fontCache && fontCache.has(fkey)) ({ font, bold, italic, guesses, recognized } = fontCache.get(fkey));
   else if (b.ocr || (!sysFont && STD_FONTS[b.font] && pdfBase && !STD_NAME.test(pdfBase))) {
     setHint('Recherche de la police la plus proche…');
     try {
       // la recherche ne doit jamais bloquer les clics suivants : 4 s maximum
       // peu de lettres (un nombre, une date) : la police se reconnaît sur la ligne entière
       const all = await guessFont(page, fontBlock || b, { budgetMs });
-      guesses = all.slice(0, 3).map(g => ({ name: g.name, std: g.std, bold: g.bold, italic: g.italic, score: Math.round(g.score * 100) / 100 }));
+      guesses = all.slice(0, 3).map(g => ({ name: g.name, std: g.std, ref: g.ref, bold: g.bold, italic: g.italic, score: Math.round(g.score * 100) / 100 }));
       if (all[0] && all[0].score >= MATCH_THRESHOLD) {
         const f = await fontFromGuess(all[0]);
-        font = f.font; if (b.ocr) { bold = f.bold; italic = f.italic; }
+        font = f.font; if (b.ocr) { bold = f.bold; italic = f.italic; recognized = true; }
       } else if (b.ocr) { font = 'helvetica'; }
     } catch (e) { console.warn('Reconnaissance de la police', e); if (b.ocr) font = 'helvetica'; }
   }
-  // scan : le gras se voit à l'épaisseur des traits (plus sûr que la comparaison de polices sur quelques lettres)
-  if (b.ocr) { const bb = await looksBold(page, r, colors.fg, b.size); if (bb != null) bold = bb; }
+  // scan sans police reconnue : le gras se voit au moins à l'épaisseur des traits
+  if (b.ocr && !recognized) { const bb = await looksBold(page, r, colors.fg, b.size); if (bb != null) bold = bb; }
   // une ligne seule (titre, date…) peut s'allonger jusqu'à la marge au lieu de passer à la ligne
   let x, w;
   if (b.lines.length === 1) {
@@ -616,7 +632,7 @@ export async function buildEditObject(page, b, { budgetMs = 2500, fontCache = nu
   };
   // la zone cliquable couvre tout l'emplacement d'origine, même si le nouveau texte est plus court
   o.minH = b.bottom + 1.5 - o.y;
-  if (fontCache && !fontCache.has(fkey)) fontCache.set(fkey, { font, bold, italic, guesses });
+  if (fontCache && !fontCache.has(fkey)) fontCache.set(fkey, { font, bold, italic, guesses, recognized });
   return o;
 }
 
@@ -664,6 +680,7 @@ export function updateObject(id, patch) {
   const f = findObject(id); if (!f) return;
   Object.assign(f.obj, patch);
   if (f.obj.type === 'text') f.obj.styled = true;
+  if ('font' in patch || 'italic' in patch) f.obj.fontManual = true;
   commit(); renderObjects(f.page.id); emit('object-updated', id);
 }
 let nudgeTimer = 0;

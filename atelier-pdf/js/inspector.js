@@ -3,6 +3,7 @@ import { state, on, emit, h, $, svgIcon, ICONS, findObject, STD_FONTS, registerC
 import { systemFontsSupported, systemFontsGranted, listSystemFonts, loadSystemFamily, isDesktop } from './systemfonts.js';
 import { updateObject, removeObject, duplicateObject, copyToAllPages, startEditing, ocrPage, refreshTextLayers, insertTextAtCenter, setTool, fontFromGuess } from './tools.js';
 import { sampleColors } from './textdetect.js';
+import { REF, loadRefFonts, fontIdForGuess } from './fontmatch.js';
 import { addImageAsset } from './docs.js';
 import { currentPageObj, renderObjects } from './viewer.js';
 import { findRegions } from './pageimages.js';
@@ -27,7 +28,13 @@ const SHAPES = [
 ];
 const WIDTHS = [{ v: 1.5, l: 'Fin' }, { v: 2.5, l: 'Moyen' }, { v: 4, l: 'Épais' }];
 const stampText = t => t.replace('{date}', todayFr());
-export function stampWidth(text, h) { const c = document.createElement('canvas').getContext('2d'); c.font = `bold ${h * 0.48}px Helvetica, Arial, sans-serif`; return Math.max(40, c.measureText(text).width + h * 0.95); }
+export /** Case « police du document » : le texte ajouté reprend la police du texte voisin. */
+function autoFontRow() {
+  const cb = h('input', { type: 'checkbox' }); cb.checked = state.autoFont;
+  cb.onchange = () => { state.autoFont = cb.checked; try { localStorage.setItem('atelierpdf.autoFont', cb.checked ? '1' : '0'); } catch {} };
+  return h('label', { class: 'check-row', title: 'Le texte écrit prend la police du texte le plus proche (reconnue sur l\'image pour un scan).' }, cb, 'Reprendre la police du document');
+}
+function stampWidth(text, h) { const c = document.createElement('canvas').getContext('2d'); c.font = `bold ${h * 0.48}px Helvetica, Arial, sans-serif`; return Math.max(40, c.measureText(text).width + h * 0.95); }
 
 export function initInspector() {
   on('selection', () => render());
@@ -141,6 +148,20 @@ function fontSelect(value, onChange) {
       if (std.length) frag.push(h('div', { class: 'font-sec' }, 'Polices de base'), ...std.map(([k, f]) => row(k, f.label, f.css)));
       const used = [...state.fonts.values()].filter(f => match(f.name));
       if (used.length) frag.push(h('div', { class: 'font-sec' }, 'Déjà utilisées'), ...used.map(f => row(f.id, f.name, `"${f.family}"`)));
+      // polices courantes : la vraie si elle est installée, sinon son équivalent libre fourni avec l'application
+      const usedNames = new Set(used.map(f => f.name));
+      const common = REF.filter(r => !r.std && (match(r.name) || match(r.clone)) && !usedNames.has(`${r.clone} (≈ ${r.name})`) && !usedNames.has(r.name));
+      if (common.length) {
+        loadRefFonts().catch(() => {});
+        frag.push(h('div', { class: 'font-sec' }, 'Polices courantes'), ...common.map(r => {
+          const el = row(null, r.name, `"APref ${r.file}", var(--font)`, async () => {
+            el.disabled = true; el.append(h('span', { class: 'spinner' }));
+            try { choose(await fontIdForGuess({ name: r.name })); }
+            catch (e) { console.error(e); el.disabled = false; el.querySelector('.spinner')?.remove(); toast(`La police « ${r.name} » n'a pas pu être chargée.`, { error: true }); }
+          });
+          return el;
+        }));
+      }
       if (sys) {
         const names = new Set(used.map(f => f.name));
         const all = sys.filter(f => match(f.name) && !names.has(f.name));
@@ -193,14 +214,14 @@ function objectPanel(o, page) {
       const cur = STD_FONTS[o.font] ? STD_FONTS[o.font].label : state.fonts.get(o.font)?.name;
       out.push(field('Polices les plus ressemblantes', h('div', { class: 'guess-list' }, ...o.fontGuesses.map(g => {
         const b = h('button', { class: 'guess' + (g.name === cur ? ' on' : ''), type: 'button', title: 'Utiliser ' + g.name },
-          h('span', { style: { fontFamily: `"${g.name}", var(--font)`, fontWeight: g.bold ? 700 : 400, fontStyle: g.italic ? 'italic' : 'normal' } }, g.name + (g.bold ? ' gras' : '') + (g.italic ? ' italique' : '')),
+          h('span', { style: { fontFamily: g.ref ? `"APref ${g.ref}", "${g.name}", var(--font)` : `"${g.name}", var(--font)`, fontWeight: g.bold ? 700 : 400, fontStyle: g.italic ? 'italic' : 'normal' } }, g.name + (g.bold ? ' gras' : '') + (g.italic ? ' italique' : '')),
           h('small', {}, Math.round(g.score * 100) + ' %'));
         b.onclick = async () => {
           b.disabled = true;
           try { up(await fontFromGuess(g)); } catch (e) { toast(`La police « ${g.name} » n'a pas pu être chargée.`, { error: true }); b.disabled = false; }
         };
         return b;
-      })), h('p', { class: 'help' }, 'Comparaison de l\'image du texte avec les polices de cet ordinateur.')));
+      })), h('p', { class: 'help' }, 'Comparaison de l\'image du texte avec les polices courantes (Arial, Times, Verdana, Calibri, Georgia…)' + (systemFontsSupported() ? ' et celles de cet ordinateur.' : '.') + ' Si la police n\'est pas installée, un équivalent libre très proche est utilisé.')));
     }
     const pdfName = o.pdfName;
     if (pdfName && STD_FONTS[o.font] && !/^(arial|helvetica|times|courier)/i.test(pdfName.replace(/^[A-Z]{6}\+/, '')))
@@ -373,7 +394,7 @@ function toolPanel(tool) {
       field('Au ' + T('clic', 'toucher'), seg([{ v: 'auto', l: 'Auto' }, { v: 'text', l: 'Texte' }, { v: 'mark', l: 'Coche' }], F.mode, v => { F.mode = v; refreshTextLayers(); render(true); }, 'Ce que fait un clic')),
       h('label', { class: 'check-row' }, cb, 'Repérer les lignes et les cases'),
       ...(F.mode !== 'mark' ? [
-        field('Police', fontSelect(d.font, v => { d.font = v; render(true); })),
+        field('Police', fontSelect(d.font, v => { d.font = v; render(true); })), autoFontRow(),
         field('Taille du texte', sizeInput(d.size, v => d.size = v)),
         field('Couleur', swatches(INK, d.color, c => { d.color = c; state.markColor = c; render(true); }))] : []),
       ...(F.mode !== 'text' ? [
@@ -388,7 +409,7 @@ function toolPanel(tool) {
     return [
       h('h2', {}, 'Ajouter du texte'),
       h('p', { class: 'help' }, T('Cliquez', 'Touchez') + ' l\'endroit voulu et écrivez. Idéal pour remplir un formulaire qui n\'a pas de champs.'),
-      field('Police', fontSelect(d.font, v => { d.font = v; render(true); })),
+      field('Police', fontSelect(d.font, v => { d.font = v; render(true); })), autoFontRow(),
       field('Taille', sizeInput(d.size, v => d.size = v)),
       field('Couleur', swatches(INK, d.color, c => { d.color = c; render(true); })),
       h('div', { class: 'insp-actions' }, actionBtn(ICONS.calendar, 'Insérer la date du jour', () => insertTextAtCenter(todayFr()))),

@@ -37,6 +37,7 @@ export const state = {
   annot: { kind: 'arrow', color: '#c2362f', width: 2.5, stamp: 'LU ET APPROUVÉ' },
   pendingSignature: null, // { asset, w, h, target? }
   textDefaults: { font: 'helvetica', size: 11, color: '#111111', bold: false, italic: false, align: 'left', lineHeight: 1.2 },
+  autoFont: (() => { try { return localStorage.getItem('atelierpdf.autoFont') !== '0'; } catch { return true; } })(), // texte ajouté : police du document
 };
 
 /* ------------------------------------------------------------ événements */
