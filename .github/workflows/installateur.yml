@@ -1,0 +1,22 @@
+name: Installateur Windows
+on:
+  push:
+    branches: [installateur-windows]
+permissions:
+  contents: read
+jobs:
+  assembler:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Réassembler et vérifier l'empreinte
+        run: |
+          NAME=$(cat nom.txt)
+          cat partie-* > "$NAME"
+          echo "$(cat sha256.txt)  $NAME" | sha256sum -c -
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Atelier-PDF-Windows
+          path: Atelier-PDF-Setup-*.exe
+          compression-level: 0
+          retention-days: 30
