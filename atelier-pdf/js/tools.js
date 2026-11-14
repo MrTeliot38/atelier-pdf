@@ -583,6 +583,32 @@ async function doEditBlock(page, b) {
  * couleur, alignement) et effacement de l'ancien texte en conservant le fond. Ne l'ajoute pas à la page.
  * fontCache : réutilise la police reconnue pour des lignes semblables (remplacements en série).
  */
+/**
+ * Taille d'un texte scanné : chaque ligne bien lue est redessinée avec la police retenue, et la taille
+ * qui lui donne la même largeur que sur le scan est retenue (médiane pondérée par le nombre de lettres).
+ */
+const fitCtx = document.createElement('canvas').getContext('2d');
+async function fitOcrSize(b, o) {
+  const { weight, style } = cssWeightStyle(o);
+  const css = `${style} ${weight} 100px ${cssFamily(o)}`;
+  try { await document.fonts.load(css, b.text); } catch { /* police déjà prête */ }
+  fitCtx.font = css;
+  const est = [];
+  for (const L of b.lines) {
+    const t = (L.text || '').trim(), n = (t.match(/[\p{L}\p{N}]/gu) || []).length;
+    if (n < 3 || !(L.w > 0) || (L.conf ?? 100) < 60) continue;
+    const m = fitCtx.measureText(t), ink = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
+    if (ink > 0) est.push({ s: L.w / ink * 100, n });
+  }
+  if (!est.length) return b.size;
+  est.sort((a, c) => a.s - c.s);
+  const half = est.reduce((t, e) => t + e.n, 0) / 2;
+  let acc = 0, s = est[0].s;
+  for (const e of est) { acc += e.n; if (acc >= half) { s = e.s; break; } }
+  // garde-fou : un texte mal lu ne doit pas donner une taille absurde
+  return s / b.size > 0.7 && s / b.size < 1.4 ? s : b.size;
+}
+
 export async function buildEditObject(page, b, { budgetMs = 2500, fontCache = null, fontBlock = null } = {}) {
   const r = { x: b.x, y: b.top, w: b.w, h: b.bottom - b.top };
   const [colors, sysFont] = await Promise.all([sampleColors(page, r), !b.ocr && STD_FONTS[b.font] ? matchSystemFont(b.pdfName) : null]);
@@ -612,6 +638,9 @@ export async function buildEditObject(page, b, { budgetMs = 2500, fontCache = nu
   }
   // scan sans police reconnue : le gras se voit au moins à l'épaisseur des traits
   if (b.ocr && !recognized) { const bb = await looksBold(page, r, colors.fg, b.size); if (bb != null) bold = bb; }
+  // scan : la hauteur lue par l'OCR est approximative (accents, barres obliques, ligne de base) ;
+  // la largeur des lignes, redessinées avec la police retenue, donne la taille exacte
+  const size = b.ocr ? await fitOcrSize(b, { font, bold, italic }) : b.size;
   // une ligne seule (titre, date…) peut s'allonger jusqu'à la marge au lieu de passer à la ligne
   let x, w;
   if (b.lines.length === 1) {
@@ -626,9 +655,10 @@ export async function buildEditObject(page, b, { budgetMs = 2500, fontCache = nu
   const patch = await patchP;
   const o = {
     id: uid(), type: 'text', origin: 'edit', orig: b.text, pdfName: b.pdfName || undefined,
-    x, y: b.base0 - b.size * ASC, w, h: b.bottom - b.top,
-    text: b.text, size: Math.round(b.size * 10) / 10, font, bold, italic, fontGuesses: guesses, fontCompared: compared,
-    color: colors.fg, align: b.align, lineHeight: Math.round(b.lineHeight * 100) / 100,
+    x, y: b.base0 - size * ASC, w, h: b.bottom - b.top,
+    text: b.text, size: Math.round(size * 10) / 10, font, bold, italic, fontGuesses: guesses, fontCompared: compared,
+    // même interligne qu'à l'origine, quelle que soit la taille retenue
+    color: colors.fg, align: b.align, lineHeight: Math.round(b.lineHeight * b.size / size * 100) / 100,
     cover: patch ? { ...patch, color: colors.bg } : { ...coverRect, color: colors.bg },
   };
   // la zone cliquable couvre tout l'emplacement d'origine, même si le nouveau texte est plus court
