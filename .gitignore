@@ -1,3 +1,15 @@
 atelier-pdf-sources.zip
 *.jks
 *.keystore
+*.p12
+*.pfx
+mot-de-passe*.txt
+LISEZ-MOI-CLE.txt
+*.apk
+*.aab
+*.exe
+notes.md
+node_modules/
+atelier-pdf-desktop/dist/
+atelier-pdf-desktop/app/
+atelier-pdf-desktop/fontnames.cjs
