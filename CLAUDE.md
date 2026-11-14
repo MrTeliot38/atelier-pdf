@@ -10,7 +10,7 @@ Ce fichier est lu au début de chaque session. Il résume tout ce qu'il faut sav
 
 ## Règles absolues
 
-1. **La clé de signature Android ne va JAMAIS dans le dépôt**, ni sur GitHub sous quelque forme que ce soit (ni fichier, ni secret GitHub Actions, ni mot de passe dans un script ou un commit). Elle vit sur le PC de Kevin, dans un dossier hors du dépôt. Vérifier `git status` avant chaque commit : aucun `.jks`, `.keystore`, `.p12`, mot de passe, APK signé ou installateur.
+1. **La clé de signature Android ne va JAMAIS dans le dépôt**, ni sur GitHub sous quelque forme que ce soit (ni fichier, ni secret GitHub Actions, ni mot de passe dans un script ou un commit). Elle vit sur le PC de Kevin, dans `%USERPROFILE%\Documents\Cle-Atelier-PDF\`, hors du dépôt (voir « Construire et publier »). Vérifier `git status` avant chaque commit : aucun `.jks`, `.keystore`, `.p12`, mot de passe, APK signé ou installateur.
 2. **Aucune connexion Internet** dans l'application. Seule exception : la recherche de mises à jour (page des versions GitHub), uniquement à la demande de la personne ou une fois par semaine si elle l'a choisi. Pas de statistiques, pas de police ou de script chargés depuis un CDN, pas de télémétrie. La politique de sécurité (CSP de `index.html`) interdit toute connexion extérieure et ne doit pas être assouplie (ni `unsafe-eval`, ni domaines externes).
 3. **Webcam bloquée dans l'application Windows** (le scanner part de photos existantes). Aucune permission accordée par Electron.
 4. **Commits** signés de l'identité `MrTeliot38 <MrTeliot38@users.noreply.github.com>`. Ne jamais publier l'adresse e-mail personnelle de Kevin (vérifier `git config user.email` dans le dépôt et le régler sur l'adresse noreply si besoin).
@@ -80,11 +80,13 @@ Correctif → Z+1 ; nouvelle fonction → Y+1.
 
 1. Changer de version (ci-dessus), commiter sur `main` avec un message court en français (« X.Y.Z : résumé »), pousser.
 2. **APK** : attendre la fin du flux GitHub « APK Android » (`gh run watch` ou onglet Actions), puis récupérer `Atelier-PDF-X.Y.Z-non-signe.apk` et `apksigner.jar` sur la branche `builds` (par exemple `git fetch origin builds` puis `git show origin/builds:<fichier> > <fichier>` dans un dossier hors du dépôt). Signer (Java 17+) :
+   La clé est sur le PC de Kevin, **hors du dépôt**, dans `%USERPROFILE%\Documents\Cle-Atelier-PDF\` : `atelier-pdf.jks` (alias `atelierpdf`) et `mot-de-passe.txt` (une seule ligne : le mot de passe, le même pour le fichier et la clé). Kevin autorise Claude Code à s'en servir pour signer. Toujours passer le mot de passe par `file:` pour qu'il n'apparaisse jamais dans une commande ni dans la conversation :
    ```
-   java -jar apksigner.jar sign --ks <chemin>\atelier-pdf.jks --ks-key-alias atelierpdf --out Atelier-PDF-X.Y.Z.apk Atelier-PDF-X.Y.Z-non-signe.apk
+   set CLE=%USERPROFILE%\Documents\Cle-Atelier-PDF
+   java -jar apksigner.jar sign --ks "%CLE%\atelier-pdf.jks" --ks-key-alias atelierpdf --ks-pass "file:%CLE%\mot-de-passe.txt" --out Atelier-PDF-X.Y.Z.apk Atelier-PDF-X.Y.Z-non-signe.apk
    java -jar apksigner.jar verify --print-certs Atelier-PDF-X.Y.Z.apk
    ```
-   Le mot de passe est **demandé de façon interactive à Kevin** (ne jamais l'écrire dans une commande enregistrée, un fichier ou un commit). Le certificat doit afficher l'empreinte SHA-256 `59:5E:EE:5A:F3:45:03:EF:89:88:AE:A4:90:DD:A3:17:7C:52:69:84:8B:0A:05:9B:DD:D2:6C:10:1D:AC:7E:D5`. Sinon, ne rien publier.
+   (Sous PowerShell : `$CLE="$env:USERPROFILE\Documents\Cle-Atelier-PDF"` et `"$CLE\atelier-pdf.jks"`, `"file:$CLE\mot-de-passe.txt"`.) Ne jamais afficher, copier, déplacer ni modifier ces fichiers, ni les copier dans le dépôt. Le certificat doit afficher l'empreinte SHA-256 `59:5E:EE:5A:F3:45:03:EF:89:88:AE:A4:90:DD:A3:17:7C:52:69:84:8B:0A:05:9B:DD:D2:6C:10:1D:AC:7E:D5`. Sinon, ne rien publier. Si le dossier est introuvable, demander à Kevin où est la clé.
 3. **Installateur Windows** (sur le PC, NSIS installé : `winget install NSIS.NSIS`) :
    ```
    cd atelier-pdf-desktop
