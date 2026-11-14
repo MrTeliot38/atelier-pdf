@@ -77,6 +77,18 @@ async function faceBytes(face) {
   return bytes;
 }
 
+/**
+ * Octets des styles normal / gras / italique / gras italique d'une famille installée
+ * (pour les polices que le moteur d'affichage ne voit pas par leur nom, comme les polices « cloud » d'Office).
+ */
+export async function familyVariantBytes(fam) {
+  const out = {};
+  await Promise.all(Object.entries(pickVariants(fam.faces)).map(async ([vk, face]) => {
+    try { out[vk] = await faceBytes(face); } catch { /* fichier illisible */ }
+  }));
+  return out;
+}
+
 /** Charge une famille installée et la rend utilisable ; renvoie l'id de police. */
 export async function loadSystemFamily(name) {
   if (loaded.has(name)) return loaded.get(name);

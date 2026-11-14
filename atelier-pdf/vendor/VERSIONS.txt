@@ -9,3 +9,9 @@ Polices de référence (vendor/fonts/ref, sous-ensembles latins) :
   Liberation Sans/Serif/Mono 2.x OFL-1.1 (équivalents métriques d'Arial, Times New Roman, Courier New)
   DejaVu Sans / Sans Condensed (licence Bitstream Vera, proches de Verdana et Tahoma)
   Carlito OFL-1.1 (équivalent métrique de Calibri), Caladea OFL-1.1 (Cambria), Gelasio OFL-1.1 (Georgia)
+  Selawik OFL-1.1 (proche de Segoe UI ; italiques obtenus par inclinaison), TeX Gyre Adventor GUST Font License (Century Gothic)
+  EB Garamond OFL-1.1 (Garamond), Comic Neue OFL-1.1 (Comic Sans MS), Libre Franklin OFL-1.1 (Franklin Gothic)
+  URW base35 : P052 (Palatino / Book Antiqua), URW Bookman (Bookman Old Style), C059 (Century Schoolbook),
+    Nimbus Sans Narrow (Arial Narrow) — AGPL-3.0 avec exception pour l'intégration dans les documents
+  Open Sans, Roboto, Montserrat, Source Sans 3, Poppins, Raleway : OFL-1.1 (polices elles-mêmes)
+  Sources : google/fonts, ArtifexSoftware/urw-base35-fonts, @docx-editor.dev/fonts 2.37.0 ; sous-ensembles latins (fontTools)

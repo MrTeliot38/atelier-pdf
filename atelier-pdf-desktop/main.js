@@ -280,7 +280,12 @@ async function fontDirs() {
   const dirs = [];
   if (process.platform === 'win32') {
     dirs.push(path.join(process.env.WINDIR || 'C:\\Windows', 'Fonts'));
-    if (process.env.LOCALAPPDATA) dirs.push(path.join(process.env.LOCALAPPDATA, 'Microsoft', 'Windows', 'Fonts'));
+    if (process.env.LOCALAPPDATA) {
+      dirs.push(path.join(process.env.LOCALAPPDATA, 'Microsoft', 'Windows', 'Fonts'));
+      // polices « cloud » d'Office (Aptos, Grandview…) : téléchargées par Office, invisibles pour Windows
+      const cache = path.join(process.env.LOCALAPPDATA, 'Microsoft', 'FontCache');
+      try { for (const v of fs.readdirSync(cache)) if (/^\d+$/.test(v)) dirs.push(path.join(cache, v, 'CloudFonts')); } catch { /* pas d'Office */ }
+    }
   } else if (process.platform === 'darwin') {
     dirs.push('/System/Library/Fonts', '/Library/Fonts', path.join(app.getPath('home'), 'Library', 'Fonts'));
   } else {

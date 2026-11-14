@@ -3,7 +3,7 @@ import { state, on, emit, h, $, svgIcon, ICONS, findObject, STD_FONTS, registerC
 import { systemFontsSupported, systemFontsGranted, listSystemFonts, loadSystemFamily, isDesktop } from './systemfonts.js';
 import { updateObject, removeObject, duplicateObject, copyToAllPages, startEditing, ocrPage, refreshTextLayers, insertTextAtCenter, setTool, fontFromGuess } from './tools.js';
 import { sampleColors } from './textdetect.js';
-import { REF, loadRefFonts, fontIdForGuess } from './fontmatch.js';
+import { REF, loadRefFonts, fontIdForGuess, refLabel } from './fontmatch.js';
 import { addImageAsset } from './docs.js';
 import { currentPageObj, renderObjects } from './viewer.js';
 import { findRegions } from './pageimages.js';
@@ -28,6 +28,17 @@ const SHAPES = [
 ];
 const WIDTHS = [{ v: 1.5, l: 'Fin' }, { v: 2.5, l: 'Moyen' }, { v: 4, l: 'Épais' }];
 const stampText = t => t.replace('{date}', todayFr());
+/** « Comparaison avec les 23 polices courantes fournies…, votre police importée et les 212 polices de cet ordinateur. » */
+function comparedText(total) {
+  const imp = [...state.fonts.values()].filter(f => f.source === 'import').length;
+  const sys = Math.max(0, (total || 0) - REF.length - imp);
+  const parts = [`les ${REF.length} polices courantes fournies avec l'application (Arial, Times, Verdana, Calibri, Garamond, Century Gothic, Segoe UI…)`];
+  if (imp) parts.push(imp > 1 ? `vos ${imp} polices importées` : 'votre police importée');
+  if (sys) parts.push(`les ${sys} polices de cet ordinateur`);
+  const list = parts.length > 1 ? parts.slice(0, -1).join(', ') + ' et ' + parts.at(-1) : parts[0];
+  return `Comparaison de l'image du texte avec ${list}. Si la police n'est pas installée, un équivalent libre très proche est utilisé.`;
+}
+
 export /** Case « police du document » : le texte ajouté reprend la police du texte voisin. */
 function autoFontRow() {
   const cb = h('input', { type: 'checkbox' }); cb.checked = state.autoFont;
@@ -150,7 +161,7 @@ function fontSelect(value, onChange) {
       if (used.length) frag.push(h('div', { class: 'font-sec' }, 'Déjà utilisées'), ...used.map(f => row(f.id, f.name, `"${f.family}"`)));
       // polices courantes : la vraie si elle est installée, sinon son équivalent libre fourni avec l'application
       const usedNames = new Set(used.map(f => f.name));
-      const common = REF.filter(r => !r.std && (match(r.name) || match(r.clone)) && !usedNames.has(`${r.clone} (≈ ${r.name})`) && !usedNames.has(r.name));
+      const common = REF.filter(r => !r.std && (match(r.name) || (r.clone && match(r.clone))) && !usedNames.has(refLabel(r)) && !usedNames.has(r.name));
       if (common.length) {
         loadRefFonts().catch(() => {});
         frag.push(h('div', { class: 'font-sec' }, 'Polices courantes'), ...common.map(r => {
@@ -214,14 +225,14 @@ function objectPanel(o, page) {
       const cur = STD_FONTS[o.font] ? STD_FONTS[o.font].label : state.fonts.get(o.font)?.name;
       out.push(field('Polices les plus ressemblantes', h('div', { class: 'guess-list' }, ...o.fontGuesses.map(g => {
         const b = h('button', { class: 'guess' + (g.name === cur ? ' on' : ''), type: 'button', title: 'Utiliser ' + g.name },
-          h('span', { style: { fontFamily: g.ref ? `"APref ${g.ref}", "${g.name}", var(--font)` : `"${g.name}", var(--font)`, fontWeight: g.bold ? 700 : 400, fontStyle: g.italic ? 'italic' : 'normal' } }, g.name + (g.bold ? ' gras' : '') + (g.italic ? ' italique' : '')),
+          h('span', { style: { fontFamily: g.ref ? `"APref ${g.ref}", "${g.name}", var(--font)` : `"${g.css || g.name}", var(--font)`, fontWeight: g.bold ? 700 : 400, fontStyle: g.italic ? 'italic' : 'normal' } }, g.name + (g.bold ? ' gras' : '') + (g.italic ? ' italique' : '')),
           h('small', {}, Math.round(g.score * 100) + ' %'));
         b.onclick = async () => {
           b.disabled = true;
           try { up(await fontFromGuess(g)); } catch (e) { toast(`La police « ${g.name} » n'a pas pu être chargée.`, { error: true }); b.disabled = false; }
         };
         return b;
-      })), h('p', { class: 'help' }, 'Comparaison de l\'image du texte avec les polices courantes (Arial, Times, Verdana, Calibri, Georgia…)' + (systemFontsSupported() ? ' et celles de cet ordinateur.' : '.') + ' Si la police n\'est pas installée, un équivalent libre très proche est utilisé.')));
+      })), h('p', { class: 'help' }, comparedText(o.fontCompared))));
     }
     const pdfName = o.pdfName;
     if (pdfName && STD_FONTS[o.font] && !/^(arial|helvetica|times|courier)/i.test(pdfName.replace(/^[A-Z]{6}\+/, '')))

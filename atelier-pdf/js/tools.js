@@ -592,17 +592,18 @@ export async function buildEditObject(page, b, { budgetMs = 2500, fontCache = nu
   const coverRect = { x: b.x - 1.5, y: b.top - up, w: b.w + 3, h: b.bottom - b.top + 1.5 + up };
   const patchP = textErasePatch(page, coverRect, colors.fg, colors.bg);
   // police inconnue (scan, photo, ou police absente de l'ordinateur) : reconnaissance visuelle, sinon Arial
-  let font = sysFont || b.font, bold = b.bold, italic = b.italic, guesses, recognized = false;
+  let font = sysFont || b.font, bold = b.bold, italic = b.italic, guesses, recognized = false, compared;
   const pdfBase = (b.pdfName || '').replace(/^[A-Z]{6}\+/, '').replace(/[^a-z]/gi, '');
   const fkey = (b.pdfName || (b.ocr ? 'ocr' : b.font)) + '|' + Math.round(b.size) + '|' + !!b.bold;
-  if (fontCache && fontCache.has(fkey)) ({ font, bold, italic, guesses, recognized } = fontCache.get(fkey));
+  if (fontCache && fontCache.has(fkey)) ({ font, bold, italic, guesses, recognized, compared } = fontCache.get(fkey));
   else if (b.ocr || (!sysFont && STD_FONTS[b.font] && pdfBase && !STD_NAME.test(pdfBase))) {
     setHint('Recherche de la police la plus proche…');
     try {
       // la recherche ne doit jamais bloquer les clics suivants : 4 s maximum
       // peu de lettres (un nombre, une date) : la police se reconnaît sur la ligne entière
       const all = await guessFont(page, fontBlock || b, { budgetMs });
-      guesses = all.slice(0, 3).map(g => ({ name: g.name, std: g.std, ref: g.ref, bold: g.bold, italic: g.italic, score: Math.round(g.score * 100) / 100 }));
+      guesses = all.slice(0, 3).map(g => ({ name: g.name, std: g.std, ref: g.ref, fontId: g.fontId, css: g.kind === 'ref' ? undefined : g.css, bold: g.bold, italic: g.italic, score: Math.round(g.score * 100) / 100 }));
+      compared = all.compared;
       if (all[0] && all[0].score >= MATCH_THRESHOLD) {
         const f = await fontFromGuess(all[0]);
         font = f.font; if (b.ocr) { bold = f.bold; italic = f.italic; recognized = true; }
@@ -626,13 +627,13 @@ export async function buildEditObject(page, b, { budgetMs = 2500, fontCache = nu
   const o = {
     id: uid(), type: 'text', origin: 'edit', orig: b.text, pdfName: b.pdfName || undefined,
     x, y: b.base0 - b.size * ASC, w, h: b.bottom - b.top,
-    text: b.text, size: Math.round(b.size * 10) / 10, font, bold, italic, fontGuesses: guesses,
+    text: b.text, size: Math.round(b.size * 10) / 10, font, bold, italic, fontGuesses: guesses, fontCompared: compared,
     color: colors.fg, align: b.align, lineHeight: Math.round(b.lineHeight * 100) / 100,
     cover: patch ? { ...patch, color: colors.bg } : { ...coverRect, color: colors.bg },
   };
   // la zone cliquable couvre tout l'emplacement d'origine, même si le nouveau texte est plus court
   o.minH = b.bottom + 1.5 - o.y;
-  if (fontCache && !fontCache.has(fkey)) fontCache.set(fkey, { font, bold, italic, guesses, recognized });
+  if (fontCache && !fontCache.has(fkey)) fontCache.set(fkey, { font, bold, italic, guesses, recognized, compared });
   return o;
 }
 
