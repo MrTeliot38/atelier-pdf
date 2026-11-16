@@ -218,9 +218,11 @@ function autoShot() { try { return localStorage.getItem(AUTO_KEY) !== '0'; } cat
 /** Repérage de la feuille en direct, plusieurs fois par seconde. */
 function liveDetect() {
   const { video, overlay, hint, shutter, autoCb, flashFx } = S.cam;
-  // prise automatique : feuille repérée et immobile pendant ~1 s ; ensuite on attend qu'elle change
-  let prevQ = null, still = 0, waitChange = null;
-  const HOLD = 1000;
+  // prise automatique : feuille repérée et immobile pendant ~0,8 s ; ensuite on attend qu'elle change.
+  // « immobile » = le contour (lissé) reste près de sa position de départ ; une mesure ratée de temps
+  // en temps (reflet, flou) n'interrompt pas le décompte.
+  let anchor = null, still = 0, waitChange = null, prevT = 0;
+  const HOLD = 800, TOL = 0.035, MIN_AREA = 0.12;
   const dist = (a, b) => Math.max(...a.map((p, i) => Math.hypot(p[0] - b[i][0], p[1] - b[i][1])));
   const area = q => Math.abs(q.reduce((s, p, i) => { const n = q[(i + 1) % 4]; return s + p[0] * n[1] - n[0] * p[1]; }, 0)) / 2;
   const small = document.createElement('canvas');
@@ -231,6 +233,7 @@ function liveDetect() {
     camTimer = requestAnimationFrame(loop);
     if (t - last < 140 || !video.videoWidth) return;
     last = t;
+    const dt = prevT ? Math.min(t - prevT, 400) : 0; prevT = t;
     const vw = video.videoWidth, vh = video.videoHeight, s = 300 / Math.max(vw, vh);
     small.width = Math.round(vw * s); small.height = Math.round(vh * s);
     sctx.drawImage(video, 0, 0, small.width, small.height);
@@ -254,53 +257,38 @@ function liveDetect() {
       ctx.restore();
       hint.classList.add('ok');
       const auto = autoCb.checked && !shooting;
-      // immobile ? (les coins bougent de moins de 1,5 % de l'image d'une mesure à l'autre)
-      const moved = prevQ && q ? dist(prevQ, q) : 1;
-      if (q) prevQ = q;
-      if (waitChange && q && dist(waitChange, q) > 0.12) waitChange = null; // nouvelle feuille, ou téléphone déplacé
-      if (auto && q && !waitChange && moved < 0.015 && area(q) > 0.18) still += t - (liveDetect.t || t); else still = 0;
-      liveDetect.t = t;
+      if (waitChange && dist(waitChange, smooth) > 0.12) waitChange = null; // nouvelle feuille, ou téléphone déplacé
+      const big = area(smooth) > MIN_AREA;
+      if (auto && !waitChange && big) {
+        if (anchor && dist(anchor, smooth) < TOL) still += dt;
+        else { anchor = smooth.map(p => [...p]); still = 0; }
+      } else { anchor = null; still = 0; }
       if (!auto) hint.textContent = 'Feuille repérée : appuyez sur le déclencheur.';
       else if (waitChange) hint.textContent = 'Page enregistrée. Présentez la page suivante, ou touchez « Terminer ».';
-      else if (q && area(q) <= 0.18) hint.textContent = 'Approchez-vous de la feuille.';
+      else if (!big) hint.textContent = 'Approchez-vous de la feuille.';
       else hint.textContent = still > 150 ? 'Ne bougez plus…' : 'Feuille repérée : tenez le téléphone immobile.';
       shutter.style.setProperty('--hold', auto && !waitChange ? Math.min(1, still / HOLD).toFixed(2) : '0');
-      if (auto && still >= HOLD) { still = 0; waitChange = q; shutter.style.setProperty('--hold', '0'); shoot(flashFx); }
+      if (auto && still >= HOLD) { still = 0; anchor = null; waitChange = smooth.map(p => [...p]); shutter.style.setProperty('--hold', '0'); shoot(flashFx); }
     } else {
       hint.textContent = 'Posez la feuille bien à plat, sur un fond qui contraste.';
       hint.classList.remove('ok');
-      still = 0; prevQ = null; shutter.style.setProperty('--hold', '0');
-      if (!seen) waitChange = null; // la feuille a quitté le cadre
-      liveDetect.t = t;
+      // contour perdu un court instant : le décompte reprend où il en était ; feuille partie : on recommence
+      if (!seen) { still = 0; anchor = null; waitChange = null; shutter.style.setProperty('--hold', '0'); }
     }
   };
   camTimer = requestAnimationFrame(loop);
 }
 
-async function grabFrame(video) {
+/**
+ * Photo = l'image de l'aperçu à l'instant même du déclenchement (flux demandé en haute définition).
+ * On n'utilise plus ImageCapture.takePhoto() : sur Android il reconfigure l'appareil photo et met
+ * 3 à 5 s (parfois davantage), si bien que la photo partait bien après l'appui.
+ */
+function grabPhoto(video) {
   const c = document.createElement('canvas');
   c.width = video.videoWidth; c.height = video.videoHeight;
-  c.getContext('2d').drawImage(video, 0, 0);
+  c.getContext('2d').drawImage(video, 0, 0); // image figée ici, tout de suite
   return new Promise(res => c.toBlob(res, 'image/jpeg', 0.93));
-}
-/** Photo en pleine définition quand l'appareil le permet, sinon l'image de l'aperçu. */
-async function grabPhoto(video) {
-  const track = S.stream?.getVideoTracks()[0];
-  if (track && 'ImageCapture' in window) {
-    try {
-      const ic = new ImageCapture(track);
-      const blob = await Promise.race([ic.takePhoto(), new Promise((_, rej) => setTimeout(() => rej(new Error('délai')), 5000))]);
-      if (blob && blob.size > 20000) {
-        // contrôle de l'orientation : la photo doit avoir le même sens que l'aperçu
-        const bmp = await createImageBitmap(blob);
-        const same = (bmp.width >= bmp.height) === (video.videoWidth >= video.videoHeight);
-        const bigger = Math.max(bmp.width, bmp.height) > Math.max(video.videoWidth, video.videoHeight);
-        bmp.close();
-        if (same && bigger) return blob;
-      }
-    } catch (e) { console.warn('takePhoto', e); }
-  }
-  return grabFrame(video);
 }
 let shooting = false;
 async function shoot(flashFx) {
