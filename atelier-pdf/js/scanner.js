@@ -105,10 +105,11 @@ const btn = (label, onclick, cls = 'outline', icon) => h('button', { class: 'btn
 function addFiles(files) {
   for (const f of files) if (/^image\//.test(f.type) || /\.(jpe?g|png|webp|heic)$/i.test(f.name || '')) addPage(f);
 }
-function addPage(blob) {
-  const p = { id: uid(), blob, w: 0, h: 0, quad: null, auto: false, rot: 0, filter: null, thumb: null, ready: false, failed: false };
+/** blob absent : photo en cours d'enregistrement (preview = petite image affichée en attendant). */
+function addPage(blob, preview = null) {
+  const p = { id: uid(), blob, preview, w: 0, h: 0, quad: null, auto: false, rot: 0, filter: null, thumb: null, ready: false, failed: false };
   S.pages.push(p);
-  prepare(p);
+  if (blob) prepare(p);
   return p;
 }
 async function prepare(p) {
@@ -206,7 +207,7 @@ function updateCamCounter() {
   if (!S?.cam) return;
   const n = S.pages.length, last = S.pages[n - 1];
   S.cam.stack.replaceChildren(...[
-    last?.thumb ? h('img', { src: last.thumb, alt: '' }) : n ? h('span', { class: 'spinner' }) : svgIcon(I.doc),
+    last?.thumb || last?.preview ? h('img', { src: last.thumb || last.preview, alt: '' }) : n ? h('span', { class: 'spinner' }) : svgIcon(I.doc),
     n ? h('b', {}, String(n)) : null].filter(Boolean));
   S.cam.stack.disabled = !n;
   S.cam.doneBtn.disabled = !n;
@@ -218,29 +219,62 @@ function autoShot() { try { return localStorage.getItem(AUTO_KEY) !== '0'; } cat
 /** Repérage de la feuille en direct, plusieurs fois par seconde. */
 function liveDetect() {
   const { video, overlay, hint, shutter, autoCb, flashFx } = S.cam;
-  // prise automatique : feuille repérée et immobile pendant ~0,8 s ; ensuite on attend qu'elle change.
-  // « immobile » = le contour (lissé) reste près de sa position de départ ; une mesure ratée de temps
-  // en temps (reflet, flou) n'interrompt pas le décompte.
-  let anchor = null, still = 0, waitChange = null, prevT = 0;
-  const HOLD = 800, TOL = 0.035, MIN_AREA = 0.12;
-  const dist = (a, b) => Math.max(...a.map((p, i) => Math.hypot(p[0] - b[i][0], p[1] - b[i][1])));
+  // Prise automatique : la feuille est repérée et l'image ne bouge plus pendant ~0,8 s.
+  // « Ne bouge plus » se mesure sur l'image elle-même (vignette 48×36 comparée d'une mesure à l'autre),
+  // pas sur le contour trouvé, qui peut sauter d'une mesure à l'autre même quand le téléphone est immobile.
+  // still : durée depuis le dernier vrai mouvement (écart > MOVE_T) ; hist : écarts récents.
+  // La photo part quand ~0,8 s se sont écoulées sans vrai mouvement ET que l'écart moyen sur cette
+  // durée reste faible : un tremblement ponctuel de la main ne remet pas tout à zéro.
+  // Après une photo, on attend que la page change (voir waitRef) avant la suivante.
+  let still = 0, prevT = 0, prevG = null, waitRef = null, changed = 0, moved = false, hist = [];
+  const HOLD = 800, MIN_AREA = 0.1, MOVE_T = 25, AVG_T = 9, CHANGE_T = 4;
+  // version grossière de la vignette (12×9 : moyenne de blocs 4×4)
+  const coarse = g => { const c = new Float32Array(108); for (let y = 0; y < 36; y++) for (let x = 0; x < 48; x++) c[(y >> 2) * 12 + (x >> 2)] += g[y * 48 + x] / 16; return c; };
   const area = q => Math.abs(q.reduce((s, p, i) => { const n = q[(i + 1) % 4]; return s + p[0] * n[1] - n[0] * p[1]; }, 0)) / 2;
-  const small = document.createElement('canvas');
-  const sctx = small.getContext('2d', { willReadFrequently: true });
+  // réduction de l'image vidéo par la carte graphique, puis lecture des seuls petits pixels
+  const scaler = document.createElement('canvas'), sx = scaler.getContext('2d');
+  const small = document.createElement('canvas'), sctx = small.getContext('2d', { willReadFrequently: true });
+  // vignette 48×36 en niveaux de gris : moyenne de chaque bloc de pixels (insensible au bruit de l'image)
+  const GW = 48, GH = 36;
+  const grayMini = (d, w, hh) => {
+    const sum = new Float32Array(GW * GH), cnt = new Uint16Array(GW * GH);
+    for (let y = 0; y < hh; y++) {
+      const row = (y * GH / hh | 0) * GW;
+      for (let x = 0, i = y * w * 4; x < w; x++, i += 4) {
+        const c = row + (x * GW / w | 0);
+        sum[c] += d[i] * 0.3 + d[i + 1] * 0.6 + d[i + 2] * 0.1; cnt[c]++;
+      }
+    }
+    return sum.map((s, i) => s / cnt[i]);
+  };
+  const diff = (a, b) => { let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s / a.length; };
   let last = 0, smooth = null, seen = 0;
   const loop = t => {
     if (!S || S.view !== 'camera' || !S.stream) return;
     camTimer = requestAnimationFrame(loop);
-    if (t - last < 140 || !video.videoWidth) return;
+    if (t - last < 120 || !video.videoWidth) return;
     last = t;
     const dt = prevT ? Math.min(t - prevT, 400) : 0; prevT = t;
     const vw = video.videoWidth, vh = video.videoHeight, s = 300 / Math.max(vw, vh);
-    small.width = Math.round(vw * s); small.height = Math.round(vh * s);
-    sctx.drawImage(video, 0, 0, small.width, small.height);
+    const w = Math.round(vw * s), hh = Math.round(vh * s);
+    if (scaler.width !== w || scaler.height !== hh) { scaler.width = small.width = w; scaler.height = small.height = hh; }
+    sx.drawImage(video, 0, 0, w, hh);
+    sctx.drawImage(scaler, 0, 0);
+    const px = sctx.getImageData(0, 0, w, hh).data;
+    const g = grayMini(px, w, hh), motion = prevG ? diff(prevG, g) : 99; prevG = g;
     let q = null;
-    try { q = detectQuad(sctx.getImageData(0, 0, small.width, small.height).data, small.width, small.height); } catch {}
+    try { q = detectQuad(px, w, hh); } catch {}
     if (q) { smooth = smooth ? smooth.map((p, i) => [p[0] * 0.5 + q[i][0] * 0.5, p[1] * 0.5 + q[i][1] * 0.5]) : q; seen = Math.min(seen + 1, 4); }
     else { seen = Math.max(seen - 1, 0); if (!seen) smooth = null; }
+    // la scène a changé depuis la dernière photo : on peut en reprendre une
+    // = feuille sortie du cadre, ou vrai mouvement (main qui change la page) puis image posée qui diffère
+    //   de la photo prise dans ses grandes zones (comparaison grossière, insensible au tremblement)
+    if (waitRef) {
+      if (motion > MOVE_T) moved = true;
+      const cd = diff(waitRef, coarse(g));
+      changed = (moved && motion < AVG_T && cd > CHANGE_T) || cd > CHANGE_T * 3 ? changed + 1 : 0;
+      if (!seen || changed >= 2) waitRef = null;
+    }
     // affichage : la vidéo est entière à l'écran (contain)
     const r = overlay.getBoundingClientRect(), dpr = devicePixelRatio || 1;
     overlay.width = Math.round(r.width * dpr); overlay.height = Math.round(r.height * dpr);
@@ -257,23 +291,21 @@ function liveDetect() {
       ctx.restore();
       hint.classList.add('ok');
       const auto = autoCb.checked && !shooting;
-      if (waitChange && dist(waitChange, smooth) > 0.12) waitChange = null; // nouvelle feuille, ou téléphone déplacé
       const big = area(smooth) > MIN_AREA;
-      if (auto && !waitChange && big) {
-        if (anchor && dist(anchor, smooth) < TOL) still += dt;
-        else { anchor = smooth.map(p => [...p]); still = 0; }
-      } else { anchor = null; still = 0; }
+      if (auto && !waitRef && big && motion < MOVE_T) { still += dt; hist.push([t, motion]); } else { still = 0; hist = []; }
+      hist = hist.filter(([ht]) => t - ht <= HOLD);
+      const calm = hist.length && hist.reduce((s, [, m]) => s + m, 0) / hist.length < AVG_T;
       if (!auto) hint.textContent = 'Feuille repérée : appuyez sur le déclencheur.';
-      else if (waitChange) hint.textContent = 'Page enregistrée. Présentez la page suivante, ou touchez « Terminer ».';
+      else if (waitRef) hint.textContent = 'Page enregistrée. Présentez la page suivante, ou touchez « Terminer ».';
       else if (!big) hint.textContent = 'Approchez-vous de la feuille.';
       else hint.textContent = still > 150 ? 'Ne bougez plus…' : 'Feuille repérée : tenez le téléphone immobile.';
-      shutter.style.setProperty('--hold', auto && !waitChange ? Math.min(1, still / HOLD).toFixed(2) : '0');
-      if (auto && still >= HOLD) { still = 0; anchor = null; waitChange = smooth.map(p => [...p]); shutter.style.setProperty('--hold', '0'); shoot(flashFx); }
+      shutter.style.setProperty('--hold', auto && !waitRef ? Math.min(1, still / HOLD).toFixed(2) : '0');
+      if (auto && still >= HOLD && calm) { still = 0; hist = []; waitRef = coarse(g); changed = 0; moved = false; shutter.style.setProperty('--hold', '0'); shoot(flashFx); }
     } else {
-      hint.textContent = 'Posez la feuille bien à plat, sur un fond qui contraste.';
+      hint.textContent = waitRef ? 'Page enregistrée. Présentez la page suivante, ou touchez « Terminer ».' : 'Posez la feuille bien à plat, sur un fond qui contraste.';
       hint.classList.remove('ok');
-      // contour perdu un court instant : le décompte reprend où il en était ; feuille partie : on recommence
-      if (!seen) { still = 0; anchor = null; waitChange = null; shutter.style.setProperty('--hold', '0'); }
+      // contour perdu un court instant : le décompte reprend ; feuille partie : on recommence
+      if (!seen) { still = 0; hist = []; shutter.style.setProperty('--hold', '0'); }
     }
   };
   camTimer = requestAnimationFrame(loop);
@@ -281,28 +313,36 @@ function liveDetect() {
 
 /**
  * Photo = l'image de l'aperçu à l'instant même du déclenchement (flux demandé en haute définition).
- * On n'utilise plus ImageCapture.takePhoto() : sur Android il reconfigure l'appareil photo et met
- * 3 à 5 s (parfois davantage), si bien que la photo partait bien après l'appui.
+ * On n'utilise pas ImageCapture.takePhoto() : sur Android il reconfigure l'appareil photo et met
+ * 3 à 5 s. La page apparaît aussitôt (petite image), la photo complète s'enregistre ensuite.
  */
-function grabPhoto(video) {
-  const c = document.createElement('canvas');
-  c.width = video.videoWidth; c.height = video.videoHeight;
-  c.getContext('2d').drawImage(video, 0, 0); // image figée ici, tout de suite
-  return new Promise(res => c.toBlob(res, 'image/jpeg', 0.93));
-}
 let shooting = false;
-async function shoot(flashFx) {
+function shoot(flashFx) {
   if (shooting || !S?.cam) return;
-  shooting = true;
   const { video, shutter } = S.cam;
-  shutter.classList.add('busy');
+  if (!video.videoWidth) return;
+  shooting = true;
   flashFx.classList.remove('go'); void flashFx.offsetWidth; flashFx.classList.add('go');
   try {
-    const blob = await grabPhoto(video);
-    if (blob && S) { addPage(blob); updateCamCounter(); navigator.vibrate?.(30); }
-  } catch (e) { console.error(e); toast('La photo n\'a pas pu être prise.', { error: true }); }
-  shutter.classList.remove('busy');
-  shooting = false;
+    const c = document.createElement('canvas');
+    c.width = video.videoWidth; c.height = video.videoHeight;
+    c.getContext('2d').drawImage(video, 0, 0); // image figée ici, tout de suite
+    const s = 200 / Math.max(c.width, c.height), t = document.createElement('canvas');
+    t.width = Math.round(c.width * s); t.height = Math.round(c.height * s);
+    t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
+    const p = addPage(null, t.toDataURL('image/jpeg', 0.7));
+    updateCamCounter(); navigator.vibrate?.(30);
+    shutter.classList.add('busy');
+    setTimeout(() => { shutter.classList.remove('busy'); shooting = false; }, 250);
+    c.toBlob(blob => {
+      if (!S || !S.pages.includes(p)) return;
+      if (!blob) { p.failed = true; onPagesChanged(); toast('La photo n\'a pas pu être enregistrée.', { error: true }); return; }
+      p.blob = blob; prepare(p);
+    }, 'image/jpeg', 0.93);
+  } catch (e) {
+    console.error(e); toast('La photo n\'a pas pu être prise.', { error: true });
+    shooting = false;
+  }
 }
 
 /* ------------------------------------------------------------ vos pages */
@@ -340,7 +380,7 @@ function renderGrid() {
   S.grid.replaceChildren(...S.pages.map((p, i) => h('div', { class: 'scan-card' + (p.ready ? '' : ' busy'), 'data-id': p.id, role: 'button', tabindex: 0, 'aria-label': `Page ${i + 1} : recadrer`,
     onclick: e => { if (!e.target.closest('.scan-card-del') && p.ready) showEditor(p); },
     onkeydown: e => { if ((e.key === 'Enter' || e.key === ' ') && p.ready) { e.preventDefault(); showEditor(p); } } },
-    h('div', { class: 'scan-card-img' }, p.thumb ? h('img', { src: p.thumb, alt: '' }) : null, !p.ready ? h('span', { class: 'spinner' }) : null,
+    h('div', { class: 'scan-card-img' }, p.thumb || p.preview ? h('img', { src: p.thumb || p.preview, alt: '' }) : null, !p.ready ? h('span', { class: 'spinner' }) : null,
       p.failed ? h('span', { class: 'scan-card-err' }, 'Image illisible') : null),
     h('span', { class: 'scan-card-num' }, String(i + 1)),
     p.ready && !p.auto ? h('span', { class: 'scan-card-warn', title: 'Bords de la feuille non trouvés : touchez pour recadrer' }, svgIcon(I.crop)) : null,
