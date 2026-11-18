@@ -4,7 +4,12 @@ import { detectQuad, warp, enhance, quadSize } from './scancore.js';
 
 const DETECT_SIZE = 420;
 
-async function decode(blob, maxLong) {
+// décodage directement à la taille utile quand on connaît déjà les dimensions de la photo
+async function decode(blob, maxLong, srcW, srcH) {
+  if (maxLong && srcW && srcH && Math.max(srcW, srcH) > maxLong) {
+    const s = maxLong / Math.max(srcW, srcH);
+    return createImageBitmap(blob, { resizeWidth: Math.round(srcW * s), resizeHeight: Math.round(srcH * s), resizeQuality: 'high' });
+  }
   let bmp = await createImageBitmap(blob);
   const long = Math.max(bmp.width, bmp.height);
   if (maxLong && long > maxLong) {
@@ -21,14 +26,28 @@ function pixels(bmp) {
   return ctx.getImageData(0, 0, bmp.width, bmp.height);
 }
 
+const VIEW_LONG = 2400;
+/**
+ * Repère la feuille. Profite du décodage de la photo pour fabriquer aussi une version allégée
+ * (≤ 2400 px) : vignettes, aperçu et recadrage l'utilisent ; la photo complète ne sert qu'au PDF final.
+ */
 async function detect({ blob }) {
   const full = await createImageBitmap(blob);
   const W = full.width, H = full.height;
   const s = DETECT_SIZE / Math.max(W, H);
   const small = await createImageBitmap(full, { resizeWidth: Math.round(W * s), resizeHeight: Math.round(H * s), resizeQuality: 'medium' });
+  let view = null;
+  if (Math.max(W, H) > VIEW_LONG * 1.15) {
+    const k = VIEW_LONG / Math.max(W, H);
+    const vb = await createImageBitmap(full, { resizeWidth: Math.round(W * k), resizeHeight: Math.round(H * k), resizeQuality: 'high' });
+    const c = new OffscreenCanvas(vb.width, vb.height);
+    c.getContext('2d').drawImage(vb, 0, 0);
+    view = { blob: await c.convertToBlob({ type: 'image/jpeg', quality: 0.9 }), w: vb.width, h: vb.height };
+    vb.close();
+  }
   full.close();
   const img = pixels(small); small.close();
-  return { quad: detectQuad(img.data, img.width, img.height), w: W, h: H };
+  return { quad: detectQuad(img.data, img.width, img.height), w: W, h: H, view };
 }
 
 /**
@@ -41,7 +60,7 @@ async function render({ blob, srcW, srcH, quad, rot = 0, filter = 'doc', maxLong
   const outScale = Math.min(1, maxLong / natLong);
   // la photo est décodée un peu plus grande que le résultat (netteté), jamais plus que nécessaire
   const decodeLong = Math.min(Math.max(srcW, srcH), Math.ceil(Math.max(srcW, srcH) * outScale * 1.4));
-  const bmp = await decode(blob, decodeLong);
+  const bmp = await decode(blob, decodeLong, srcW, srcH);
   const sw = bmp.width, sh = bmp.height;
   const src = pixels(bmp); bmp.close();
   const sq = quad.map(([x, y]) => [x * sw, y * sh]);

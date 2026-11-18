@@ -23,7 +23,7 @@ import { commit } from './core.js';
 import { openScanner, isScannerOpen } from './scanner.js';
 import { isAndroidApp, isTouch, saveBlob, onSaveDone, openDownloads, printPdf, onIncomingFiles, initBackButton, defaultPdfStatus, openAppSettings, openTestPdf, testPdfInDownloads, removeTestPdf, TEST_PDF_NAME } from './platform.js';
 
-const VERSION = '1.14.0';
+const VERSION = '1.14.1';
 const desktop = window.atelierDesktop;
 if (desktop) document.body.classList.add('is-desktop');
 const isMobile = () => window.innerWidth < 860;
@@ -208,11 +208,27 @@ $('#btnShare').onclick = openShareDialog;
 $('#btnSearch').onclick = () => isSearchOpen() ? closeSearch() : openSearch();
 $('#btnPrint').onclick = openPrintDialog;
 $('#btnImages').onclick = openImageDialog;
+// liste des pages : sur grand écran, repliée en une fine bande (choix mémorisé) ; sur téléphone, volet par-dessus
+const FOLD_KEY = 'atelierpdf.sidebarFolded';
+let folded = (() => { try { return localStorage.getItem(FOLD_KEY) === '1'; } catch { return false; } })();
+function syncSidebar() {
+  document.body.classList.toggle('sidebar-hidden', folded && !isMobile());
+  $('#btnToggleSidebar').setAttribute('aria-pressed', isMobile() ? document.body.classList.contains('sidebar-open') : !folded);
+}
+function setFolded(v) {
+  folded = v; try { localStorage.setItem(FOLD_KEY, v ? '1' : '0'); } catch {}
+  syncSidebar();
+}
 $('#btnToggleSidebar').onclick = () => {
-  if (isMobile()) document.body.classList.toggle('sidebar-open');
-  else document.body.classList.toggle('sidebar-hidden');
-  $('#btnToggleSidebar').setAttribute('aria-pressed', isMobile() ? document.body.classList.contains('sidebar-open') : !document.body.classList.contains('sidebar-hidden'));
+  if (isMobile()) { document.body.classList.toggle('sidebar-open'); syncSidebar(); }
+  else setFolded(!folded);
 };
+$('#btnFoldSidebar').onclick = () => { if (isMobile()) { document.body.classList.remove('sidebar-open'); syncSidebar(); } else setFolded(true); };
+$('#btnUnfoldSidebar').onclick = () => setFolded(false);
+window.addEventListener('resize', syncSidebar);
+on('pages-changed', () => { $('#railCount').textContent = fmtPages(state.pages.length); });
+on('doc-opened', () => { $('#railCount').textContent = fmtPages(state.pages.length); });
+syncSidebar();
 $('#thumbs').addEventListener('click', () => { if (isMobile()) document.body.classList.remove('sidebar-open'); });
 const updateIndicator = () => {
   const i = state.pages.findIndex(p => p.id === state.currentPage);

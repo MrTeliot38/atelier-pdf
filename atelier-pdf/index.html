@@ -107,7 +107,9 @@
 
 <main class="workspace">
   <aside class="sidebar only-doc" id="sidebar" aria-label="Pages du document">
+    <button class="sidebar-rail" id="btnUnfoldSidebar" type="button" title="Déplier la liste des pages" aria-label="Déplier la liste des pages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg><span id="railCount"></span></button>
     <div class="sidebar-head">
+      <button class="btn icon small sidebar-fold" id="btnFoldSidebar" type="button" title="Replier la liste des pages" aria-label="Replier la liste des pages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg></button>
       <span id="pageCount">0 page</span>
       <button class="btn small" id="btnAddPages" aria-haspopup="menu">+ Ajouter</button>
       <div class="menu" id="addMenu" role="menu" hidden>

@@ -115,15 +115,17 @@ function addPage(blob, preview = null) {
 async function prepare(p) {
   try {
     const d = await work('detect', { blob: p.blob });
-    p.w = d.w; p.h = d.h; p.quad = d.quad || FULL; p.auto = !!d.quad;
+    p.w = d.w; p.h = d.h; p.quad = d.quad || FULL; p.auto = !!d.quad; p.view = d.view || null;
     await refreshThumb(p);
     p.ready = true;
   } catch (e) { console.error(e); p.failed = true; }
   onPagesChanged();
 }
 const filterOf = p => p.filter || S.filter;
+/** Image de travail (allégée) pour les vignettes, l'aperçu et le recadrage ; la photo complète sert au PDF final. */
+const lite = p => p.view ? { blob: p.view.blob, srcW: p.view.w, srcH: p.view.h } : { blob: p.blob, srcW: p.w, srcH: p.h };
 async function refreshThumb(p) {
-  const r = await work('render', { blob: p.blob, srcW: p.w, srcH: p.h, quad: p.quad, rot: p.rot, filter: filterOf(p), maxLong: 520, q: 0.8 });
+  const r = await work('render', { ...lite(p), quad: p.quad, rot: p.rot, filter: filterOf(p), maxLong: 520, q: 0.8 });
   if (!S) return;
   if (p.thumb) URL.revokeObjectURL(p.thumb);
   p.thumb = URL.createObjectURL(r.blob);
@@ -180,11 +182,16 @@ async function showCamera() {
     const track = S.stream.getVideoTracks()[0];
     try { track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {}); } catch {}
     const caps = track.getCapabilities ? track.getCapabilities() : {};
-    // la photo est une image du flux : on prend la plus grande définition que l'appareil propose
+    // la photo est une image du flux : on prend la meilleure définition proposée, plafonnée à ~12 Mpx
+    // (au-delà, par exemple 50 Mpx sur un Pixel, tout devient lent pour aucun gain sur une feuille A4)
     try {
       const st = track.getSettings?.() || {};
-      if (caps.width?.max && caps.height?.max && st.width && st.width * st.height < caps.width.max * caps.height.max * 0.9)
-        await track.applyConstraints({ width: { ideal: caps.width.max }, height: { ideal: caps.height.max } }).catch(() => {});
+      const MAXL = 4096;
+      if (caps.width?.max && caps.height?.max && st.width && Math.max(st.width, st.height) < MAXL * 0.9) {
+        const k = Math.min(1, MAXL / Math.max(caps.width.max, caps.height.max));
+        const w = Math.round(caps.width.max * k), hh = Math.round(caps.height.max * k);
+        if (w * hh > st.width * st.height * 1.2) await track.applyConstraints({ width: { ideal: w }, height: { ideal: hh } }).catch(() => {});
+      }
     } catch {}
     if (caps.torch) {
       torchBtn.hidden = false;
@@ -449,7 +456,7 @@ function removePage(p) {
 /* ------------------------------------------------------------ recadrage d'une page */
 function showEditor(p) {
   const img = h('img', { class: 'scan-edit-img', alt: '', draggable: 'false' });
-  const url = URL.createObjectURL(p.blob);
+  const url = URL.createObjectURL(lite(p).blob);
   img.src = url;
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('class', 'scan-edit-svg');
@@ -526,14 +533,14 @@ function showEditor(p) {
     const job = ++previewJob;
     preview.hidden = false;
     preview.replaceChildren(h('span', { class: 'spinner' }));
-    const r = await work('render', { blob: p.blob, srcW: p.w, srcH: p.h, quad, rot, filter: filter || S.filter, maxLong: 1400, q: 0.85 });
+    const r = await work('render', { ...lite(p), quad, rot, filter: filter || S.filter, maxLong: 1400, q: 0.85 });
     if (job !== previewJob || !S) return;
     if (previewUrl) URL.revokeObjectURL(previewUrl);
     previewUrl = URL.createObjectURL(r.blob);
     preview.replaceChildren(h('img', { src: previewUrl, alt: 'Aperçu de la page' }), btn('Retour au recadrage', () => { preview.hidden = true; }, 'outline scan-preview-close'));
   };
   const redetect = async () => {
-    const d = await work('detect', { blob: p.blob });
+    const d = await work('detect', { blob: lite(p).blob });
     if (d.quad) { quad = d.quad; place(); toast('Bords de la feuille retrouvés.'); }
     else toast('Les bords de la feuille n\'ont pas été trouvés : placez les coins à la main.');
   };

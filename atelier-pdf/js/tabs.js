@@ -7,6 +7,16 @@ import { mat, fitWidth } from './viewer.js';
 const tabs = [];
 let active = null;
 const bar = $('#tabbar');
+// grand écran : les onglets vont dans la barre du haut, à côté de « Ouvrir » ; sinon, sur leur propre ligne
+const home = { parent: bar?.parentNode, next: bar?.nextSibling };
+const wideTop = matchMedia('(min-width: 1500px)');
+function placeBar() {
+  if (!bar) return;
+  if (wideTop.matches) { if (!bar.classList.contains('in-top')) { $('#btnOpen').after(bar); bar.classList.add('in-top'); } }
+  else if (bar.classList.contains('in-top')) { home.parent.insertBefore(bar, home.next); bar.classList.remove('in-top'); }
+}
+wideTop.addEventListener?.('change', placeBar);
+placeBar();
 
 export const tabCount = () => tabs.length;
 export const anyDirty = () => tabs.some(t => (t === active ? state.dirty : t.dirty));
