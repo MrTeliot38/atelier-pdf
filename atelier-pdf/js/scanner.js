@@ -180,6 +180,12 @@ async function showCamera() {
     const track = S.stream.getVideoTracks()[0];
     try { track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {}); } catch {}
     const caps = track.getCapabilities ? track.getCapabilities() : {};
+    // la photo est une image du flux : on prend la plus grande définition que l'appareil propose
+    try {
+      const st = track.getSettings?.() || {};
+      if (caps.width?.max && caps.height?.max && st.width && st.width * st.height < caps.width.max * caps.height.max * 0.9)
+        await track.applyConstraints({ width: { ideal: caps.width.max }, height: { ideal: caps.height.max } }).catch(() => {});
+    } catch {}
     if (caps.torch) {
       torchBtn.hidden = false;
       torchBtn.onclick = async () => {
@@ -295,7 +301,8 @@ function liveDetect() {
       if (auto && !waitRef && big && motion < MOVE_T) { still += dt; hist.push([t, motion]); } else { still = 0; hist = []; }
       hist = hist.filter(([ht]) => t - ht <= HOLD);
       const calm = hist.length && hist.reduce((s, [, m]) => s + m, 0) / hist.length < AVG_T;
-      if (!auto) hint.textContent = 'Feuille repérée : appuyez sur le déclencheur.';
+      if (shooting) hint.textContent = 'Mise au point…';
+      else if (!auto) hint.textContent = 'Feuille repérée : appuyez sur le déclencheur.';
       else if (waitRef) hint.textContent = 'Page enregistrée. Présentez la page suivante, ou touchez « Terminer ».';
       else if (!big) hint.textContent = 'Approchez-vous de la feuille.';
       else hint.textContent = still > 150 ? 'Ne bougez plus…' : 'Feuille repérée : tenez le téléphone immobile.';
@@ -311,36 +318,80 @@ function liveDetect() {
   camTimer = requestAnimationFrame(loop);
 }
 
+/** Netteté d'une zone (énergie des contrastes entre pixels voisins), pour choisir l'image la plus nette. */
+function sharpness(d, n) {
+  let s = 0;
+  for (let y = 1; y < n; y += 2) for (let x = 1; x < n; x += 2) {
+    const i = (y * n + x) * 4, g = d[i + 1], gx = g - d[i - 3], gy = g - d[i - n * 4 + 1];
+    s += gx * gx + gy * gy;
+  }
+  return s;
+}
+// image suivante du flux (au plus 60 ms d'attente : une vidéo figée ne doit rien bloquer)
+const nextFrame = video => new Promise(r => {
+  const t = setTimeout(r, 60);
+  const done = () => { clearTimeout(t); r(); };
+  video.requestVideoFrameCallback ? video.requestVideoFrameCallback(done) : requestAnimationFrame(done);
+});
+
 /**
- * Photo = l'image de l'aperçu à l'instant même du déclenchement (flux demandé en haute définition).
- * On n'utilise pas ImageCapture.takePhoto() : sur Android il reconfigure l'appareil photo et met
- * 3 à 5 s. La page apparaît aussitôt (petite image), la photo complète s'enregistre ensuite.
+ * Photo nette en moins d'une seconde : on relance la mise au point, puis on garde l'image la plus
+ * nette du flux (haute définition) pendant au plus ~0,75 s ; on s'arrête plus tôt quand la netteté
+ * ne progresse plus. On n'utilise pas ImageCapture.takePhoto() : sur Android il met 3 à 5 s.
  */
+async function captureSharp(video, maxMs = 750) {
+  const W = video.videoWidth, H = video.videoHeight;
+  const track = S.stream?.getVideoTracks()[0];
+  const caps = track?.getCapabilities?.() || {};
+  const single = caps.focusMode?.includes('single-shot');
+  if (single) track.applyConstraints({ advanced: [{ focusMode: 'single-shot' }] }).catch(() => {});
+  const best = document.createElement('canvas'); best.width = W; best.height = H;
+  const bctx = best.getContext('2d');
+  // zone de mesure : le centre de l'image, à sa définition réelle (les détails fins comptent)
+  const n = Math.max(64, Math.min(384, Math.round(Math.min(W, H) / 3)));
+  const zone = document.createElement('canvas'); zone.width = zone.height = n;
+  const zctx = zone.getContext('2d', { willReadFrequently: true });
+  const t0 = performance.now();
+  let top = -1, since = 0;
+  for (;;) {
+    zctx.drawImage(video, (W - n) / 2, (H - n) / 2, n, n, 0, 0, n, n);
+    const sc = sharpness(zctx.getImageData(0, 0, n, n).data, n);
+    if (sc > top) { top = sc; since = 0; bctx.drawImage(video, 0, 0); } else since++;
+    const el = performance.now() - t0;
+    // mise au point terminée (la netteté retombe ou stagne), ou temps écoulé
+    if (el > maxMs || (el > 200 && since >= 4) || !S?.stream) break;
+    await nextFrame(video);
+  }
+  if (single) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+  return best;
+}
+
 let shooting = false;
-function shoot(flashFx) {
+async function shoot(flashFx) {
   if (shooting || !S?.cam) return;
   const { video, shutter } = S.cam;
   if (!video.videoWidth) return;
   shooting = true;
-  flashFx.classList.remove('go'); void flashFx.offsetWidth; flashFx.classList.add('go');
+  shutter.classList.add('busy');
   try {
-    const c = document.createElement('canvas');
-    c.width = video.videoWidth; c.height = video.videoHeight;
-    c.getContext('2d').drawImage(video, 0, 0); // image figée ici, tout de suite
+    const c = await captureSharp(video);
+    if (!S?.cam) return;
+    flashFx.classList.remove('go'); void flashFx.offsetWidth; flashFx.classList.add('go');
+    // la page apparaît aussitôt (petite image), la photo complète s'enregistre ensuite
     const s = 200 / Math.max(c.width, c.height), t = document.createElement('canvas');
     t.width = Math.round(c.width * s); t.height = Math.round(c.height * s);
     t.getContext('2d').drawImage(c, 0, 0, t.width, t.height);
     const p = addPage(null, t.toDataURL('image/jpeg', 0.7));
     updateCamCounter(); navigator.vibrate?.(30);
-    shutter.classList.add('busy');
-    setTimeout(() => { shutter.classList.remove('busy'); shooting = false; }, 250);
     c.toBlob(blob => {
       if (!S || !S.pages.includes(p)) return;
       if (!blob) { p.failed = true; onPagesChanged(); toast('La photo n\'a pas pu être enregistrée.', { error: true }); return; }
       p.blob = blob; prepare(p);
-    }, 'image/jpeg', 0.93);
+    }, 'image/jpeg', 0.94);
   } catch (e) {
     console.error(e); toast('La photo n\'a pas pu être prise.', { error: true });
+  } finally {
+    shutter.classList.remove('busy');
     shooting = false;
   }
 }

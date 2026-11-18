@@ -152,6 +152,15 @@ body.is-empty .only-doc { display: none !important; }
   background-attachment: local;
 }
 .pages { display: flex; flex-direction: column; align-items: center; gap: 28px; padding: 28px 24px 120px; min-width: max-content; }
+/* deux pages côte à côte (écrans larges) ; « livret » : la première page seule, à droite */
+.pages.spread { display: grid; grid-template-columns: repeat(2, max-content); justify-content: center; align-items: center; column-gap: 24px; row-gap: 40px; }
+.pages.spread.cover > .page-slot:first-child { grid-column: 2; }
+.view-wrap { position: relative; display: flex; }
+#viewMenu { top: calc(100% + 6px); left: 50%; transform: translateX(-50%); min-width: 260px; }
+#viewMenu button[aria-checked="true"] { font-weight: 700; }
+#viewMenu button[aria-checked="true"]::after { content: ' ✓'; }
+#btnView.is-on { background: var(--chrome-2); }
+@media (max-width: 860px) { .wide-only { display: none !important; } }
 
 .page-slot { position: relative; flex: none; }
 .page {
@@ -489,6 +498,11 @@ kbd { font: inherit; font-size: 12.5px; padding: 1px 6px; border: 1px solid var(
 body.has-tabs .docname { display: none; }
 
 /* ---------- Fusion ---------- */
+.split-preview { display: flex; flex-direction: column; gap: 4px; max-height: 32vh; overflow-y: auto; }
+.split-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-s); background: var(--surface); }
+.split-row b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.split-row small { color: var(--muted); white-space: nowrap; }
+.error-text { color: var(--danger); margin: 0; }
 .merge-list { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; }
 .merge-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--radius-m); background: var(--surface); }
 .merge-row .check-row { flex: 1; min-width: 0; }
@@ -930,3 +944,7 @@ body:not(.tool-select) .sel-layer { display: none; }
 @font-face { font-family: "Liberation Mono"; src: url("../vendor/fonts/ref/LiberationMono-b.ttf"); font-weight: 700; font-style: normal; font-display: swap; }
 @font-face { font-family: "Liberation Mono"; src: url("../vendor/fonts/ref/LiberationMono-i.ttf"); font-weight: 400; font-style: italic; font-display: swap; }
 @font-face { font-family: "Liberation Mono"; src: url("../vendor/fonts/ref/LiberationMono-bi.ttf"); font-weight: 700; font-style: italic; font-display: swap; }
+
+/* accueil : fusionner / diviser ; boutons de choix qui passent à la ligne */
+.welcome-more { display: flex; gap: 10px; justify-content: center; align-items: center; margin: 12px 0 0; color: var(--muted); }
+.seg.wrap { flex-wrap: wrap; }

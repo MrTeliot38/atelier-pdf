@@ -1,6 +1,6 @@
 // Atelier PDF — point d'entrée : barre d'outils, fichiers, raccourcis, application installable
 import { state, svgIcon, on, emit, h, $, $$, initFonts, undo, redo, canUndo, canRedo, findObject, toast, fmtPages } from './core.js';
-import { initViewer, setZoom, fitWidth, scrollToPage } from './viewer.js';
+import { initViewer, setZoom, fitWidth, scrollToPage, setViewMode, getViewMode } from './viewer.js';
 import { initTools, setTool, removeObject, nudge, flushNudge, duplicateObject, armSignature, placeImage, placeSignatureInRect, select } from './tools.js';
 import { initPagesPanel, insertBlankPage, insertionIndex, clearPageSelection } from './pagesPanel.js';
 import { initInspector } from './inspector.js';
@@ -23,7 +23,7 @@ import { commit } from './core.js';
 import { openScanner, isScannerOpen } from './scanner.js';
 import { isAndroidApp, isTouch, saveBlob, onSaveDone, openDownloads, printPdf, onIncomingFiles, initBackButton, defaultPdfStatus, openAppSettings, openTestPdf, testPdfInDownloads, removeTestPdf, TEST_PDF_NAME } from './platform.js';
 
-const VERSION = '1.13.3';
+const VERSION = '1.14.0';
 const desktop = window.atelierDesktop;
 if (desktop) document.body.classList.add('is-desktop');
 const isMobile = () => window.innerWidth < 860;
@@ -58,6 +58,23 @@ $('#btnOpenWelcome').onclick = askOpen;
 const scanNew = (files) => openScanner({ mode: 'new', files, onEdit: file => handleFiles([file]) });
 const scanAppend = () => openScanner({ mode: 'append', onAppend: file => openFiles([file], { mode: 'append', at: insertionIndex() }) });
 $('#btnScanWelcome').onclick = () => scanNew();
+// accueil : fusionner plusieurs PDF (le premier s'ouvre, les suivants s'ajoutent à la suite) ou en diviser un
+$('#btnMergeWelcome').onclick = () => $('#mergeInput').click();
+$('#mergeInput').onchange = async e => {
+  const files = [...e.target.files]; e.target.value = ''; if (!files.length) return;
+  if (files.length === 1) toast('Choisissez au moins deux PDF (Ctrl+clic pour en sélectionner plusieurs).');
+  const busy = toast('Fusion…', { duration: 60000 });
+  try {
+    if (!await openFiles([files[0]])) return;
+    for (const f of files.slice(1)) await openFiles([f], { mode: 'append', at: state.pages.length });
+    if (files.length > 1) toast(`${files.length} PDF réunis : ${fmtPages(state.pages.length)}. Pensez à enregistrer.`, { duration: 7000 });
+  } finally { busy.remove(); }
+};
+$('#btnSplitWelcome').onclick = () => $('#splitInput').click();
+$('#splitInput').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  if (await openFiles([f])) (await import('./split.js')).openSplitDialog();
+};
 // sur téléphone et tablette, le scanner est mis en avant
 if (isTouch) { $('.drop-hint').hidden = true; $('#btnScanWelcome').className = 'btn primary big'; $('#btnOpenWelcome').className = 'btn outline big'; $('#btnScanWelcome').after($('#btnOpenWelcome')); }
 fileInput.onchange = () => { const f = [...fileInput.files]; fileInput.value = ''; if (f.length) handleFiles(f); };
@@ -179,6 +196,13 @@ $('#btnZoomIn').onclick = () => setZoom(state.zoom * 1.2);
 $('#btnZoomOut').onclick = () => setZoom(state.zoom / 1.2);
 $('#btnZoomFit').onclick = () => fitWidth();
 on('zoom', () => $('#btnZoomFit').textContent = Math.round(state.zoom * 100) + ' %');
+// affichage : une page ou deux pages côte à côte
+const viewMenu = $('#viewMenu');
+const syncViewMenu = () => viewMenu.querySelectorAll('[data-view]').forEach(b => b.setAttribute('aria-checked', b.dataset.view === getViewMode()));
+$('#btnView').onclick = e => { e.stopPropagation(); syncViewMenu(); toggleMenu(viewMenu); };
+viewMenu.addEventListener('click', e => { const b = e.target.closest('[data-view]'); if (!b) return; viewMenu.hidden = true; setViewMode(b.dataset.view); });
+on('view-mode', v => $('#btnView').classList.toggle('is-on', v !== 'single'));
+$('#btnView').classList.toggle('is-on', getViewMode() !== 'single');
 $('#btnDownload').onclick = () => desktop ? savePdf() : downloadPdf();
 $('#btnShare').onclick = openShareDialog;
 $('#btnSearch').onclick = () => isSearchOpen() ? closeSearch() : openSearch();
@@ -203,6 +227,8 @@ const MENU_ICONS = {
   scan: '<path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="M4 12h16"/>',
   recents: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3.5 2"/>',
   merge: '<path d="M7 4v5a5 5 0 0 0 5 5v6M17 4v5a5 5 0 0 1-5 5"/>',
+  split: '<path d="M12 20v-6a5 5 0 0 0-5-5V4M12 14a5 5 0 0 1 5-5V4"/>',
+  numbers: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M10 17h4M12 17v-5l-1.5 1"/>',
   newwin: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/>',
   print: '<path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/>',
   images: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
@@ -238,6 +264,8 @@ mainMenu.addEventListener('click', async e => {
   if (act === 'default') defaultReaderDialog();
   if (act === 'close') closeTab();
   if (act === 'merge') openMergeDialog();
+  if (act === 'split') (await import('./split.js')).openSplitDialog();
+  if (act === 'numbers') (await import('./numbering.js')).openNumberingDialog();
   if (act === 'help') showHelp();
   if (act === 'about') showAbout();
 });
@@ -247,7 +275,7 @@ function toggleMenu(m) {
   m.hidden = !open;
   if (open) m.querySelector('button:not([hidden])')?.focus();
 }
-document.addEventListener('pointerdown', e => { if (!e.target.closest('.menu, #btnMenu, #btnAddPages')) $$('.menu').forEach(x => x.hidden = true); });
+document.addEventListener('pointerdown', e => { if (!e.target.closest('.menu, #btnMenu, #btnAddPages, #btnView')) $$('.menu').forEach(x => x.hidden = true); });
 
 /* ------------------------------------------------ raccourcis */
 const TOOL_KEYS = { v: 'select', e: 'edit', f: 'fill', t: 'fill', s: 'sign', c: 'fill', m: 'mask', h: 'highlight', a: 'annot', r: 'redact' };
@@ -491,7 +519,9 @@ function showHelp() {
       h('p', {}, h('b', {}, 'Remplir un formulaire : '), 'choisissez « Remplir ». Les champs du PDF, les lignes à compléter et les cases à cocher sont repérés en bleu : cliquez pour écrire ou cocher, Entrée ou Tab passe à la ligne suivante. Un clic ailleurs écrit à cet endroit.'),
       h('p', {}, h('b', {}, 'Cacher une information : '), '« Caviarder » pose un bandeau noir et supprime vraiment le texte dessous à l\'enregistrement (la page devient une image). « Masquer » ne fait que recouvrir.'),
       h('p', {}, h('b', {}, 'Annoter : '), 'flèches, cercles, traits, notes et tampons (« Lu et approuvé », « Urgent », « Reçu le… »).'),
-      h('p', {}, h('b', {}, 'Pages : '), 'faites glisser les miniatures pour les réordonner ; cochez-les pour les pivoter, dupliquer, supprimer ou les télécharger seules.')),
+      h('p', {}, h('b', {}, 'Pages : '), 'faites glisser les miniatures pour les réordonner ; cochez-les pour les pivoter, dupliquer, supprimer ou les télécharger seules.'),
+      h('p', {}, h('b', {}, 'Plusieurs fichiers : '), 'menu ⋮ › Fusionner des PDF, Diviser le PDF (toutes les N pages, ou « 1-3, 4-6, 9 » pour trois fichiers d\'un coup), Numéroter les pages.'),
+      h('p', {}, h('b', {}, 'Affichage : '), 'le bouton à deux pages, à côté du zoom, montre deux pages côte à côte (ou en livret, couverture seule) sur un grand écran.')),
     h('dl', { class: 'kbd-list' }, ...keys.flatMap(([a, b]) => [h('dt', {}, h('kbd', {}, a)), h('dd', {}, b)])),
   ] });
 }

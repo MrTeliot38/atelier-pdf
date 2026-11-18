@@ -40,6 +40,14 @@
     <button class="btn icon" id="btnZoomOut" title="Dézoomer"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
     <button class="btn zoom-val" id="btnZoomFit" title="Ajuster à la largeur">100 %</button>
     <button class="btn icon" id="btnZoomIn" title="Zoomer"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <div class="view-wrap wide-only">
+      <button class="btn icon" id="btnView" title="Affichage : une page ou deux pages côte à côte" aria-haspopup="menu"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="8" height="14" rx="1"/><rect x="13" y="5" width="8" height="14" rx="1"/></svg></button>
+      <div class="menu" id="viewMenu" role="menu" hidden>
+        <button role="menuitemradio" data-view="single">Une page à la fois</button>
+        <button role="menuitemradio" data-view="spread">Deux pages côte à côte</button>
+        <button role="menuitemradio" data-view="cover">Deux pages, couverture seule (livret)</button>
+      </div>
+    </div>
   </div>
   <button class="btn icon only-doc" id="btnSearch" title="Rechercher dans le document (Ctrl+F)" aria-label="Rechercher dans le document"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg></button>
   <div class="group only-doc">
@@ -54,6 +62,8 @@
       <button role="menuitem" data-act="scan">Scanner un document…</button>
       <button role="menuitem" data-act="recents" class="only-doc">Fichiers récents…</button>
       <button role="menuitem" data-act="merge" class="only-doc">Fusionner des PDF…</button>
+      <button role="menuitem" data-act="split" class="only-doc">Diviser le PDF en plusieurs fichiers…</button>
+      <button role="menuitem" data-act="numbers" class="only-doc">Numéroter les pages…</button>
       <button role="menuitem" data-act="newwin" class="desktop-only" hidden>Nouvelle fenêtre</button>
     </div>
     <div class="menu-group">
@@ -113,6 +123,7 @@
         <button class="btn icon small" data-sel="rotl" title="Pivoter à gauche"><svg viewBox="0 0 24 24"><path d="M4 4v6h6"/><path d="M4.5 10A8 8 0 1 1 6 16.5"/></svg></button>
         <button class="btn icon small" data-sel="rotr" title="Pivoter à droite"><svg viewBox="0 0 24 24"><path d="M20 4v6h-6"/><path d="M19.5 10A8 8 0 1 0 18 16.5"/></svg></button>
         <button class="btn icon small" data-sel="dup" title="Dupliquer"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg></button>
+        <button class="btn icon small" data-sel="split" title="Un PDF par groupe de pages qui se suivent (diviser)"><svg viewBox="0 0 24 24"><path d="M4 4h6v16H4zM14 4h6v16h-6z"/></svg></button>
         <button class="btn icon small" data-sel="extract" title="Télécharger ces pages seules"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 19h16"/></svg></button>
         <button class="btn icon small danger" data-sel="del" title="Supprimer"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg></button>
         <button class="btn icon small" data-sel="clear" title="Tout désélectionner"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -147,6 +158,9 @@
         <button class="btn primary big" id="btnOpenWelcome"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Ouvrir un PDF ou une image</button>
         <button class="btn outline big" id="btnScanWelcome"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8a2 2 0 0 1 2-2h2l1.5-2h5L16 6h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.5"/></svg>Scanner un document</button>
       </div>
+      <p class="welcome-more"><button class="linklike" type="button" id="btnMergeWelcome">Fusionner plusieurs PDF</button><span aria-hidden="true">·</span><button class="linklike" type="button" id="btnSplitWelcome">Diviser un PDF</button></p>
+      <input type="file" id="mergeInput" accept="application/pdf,.pdf" multiple hidden>
+      <input type="file" id="splitInput" accept="application/pdf,.pdf" hidden>
       <div class="recents" id="recents" hidden>
         <div class="recents-head"><h2>Récents</h2><button class="linklike" type="button" data-recents-all hidden>Tout voir</button><button class="linklike" type="button" data-recents-clear>Effacer la liste</button></div>
         <ul class="recent-list"></ul>

@@ -39,7 +39,13 @@ export function initViewer() {
     e.preventDefault();
     setZoom(state.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1), e);
   }, { passive: false });
-  window.addEventListener('resize', () => { if (state.pages.length) updateCurrent(); });
+  let wasWide = window.innerWidth >= 860;
+  window.addEventListener('resize', () => {
+    const wide = window.innerWidth >= 860;
+    if (wide !== wasWide) { wasWide = wide; applyView(); }
+    if (state.pages.length) updateCurrent();
+  });
+  applyView();
   pinchZoom();
 }
 
@@ -69,12 +75,32 @@ function zoomAt(z, cx, cy, vx, vy) {
   for (const id of near) queueRender(id);
   emit('zoom');
 }
+/* ------------------------------------------------------------ affichage : une ou deux pages */
+const VIEW_KEY = 'atelierpdf.view';
+let viewMode = (() => { try { return localStorage.getItem(VIEW_KEY) || 'single'; } catch { return 'single'; } })();
+/** Mode réellement appliqué : deux pages seulement sur un écran assez large. */
+const effectiveView = () => (window.innerWidth >= 860 ? viewMode : 'single');
+export const getViewMode = () => viewMode;
+function applyView() {
+  const v = effectiveView();
+  pagesEl.classList.toggle('spread', v !== 'single');
+  pagesEl.classList.toggle('cover', v === 'cover');
+}
+export function setViewMode(v) {
+  viewMode = v;
+  try { localStorage.setItem(VIEW_KEY, v); } catch {}
+  applyView();
+  if (state.pages.length) { fitWidth(); updateCurrent(); }
+  emit('view-mode', v);
+}
+
 export function fitWidth(initial) {
   if (!state.pages.length) return;
-  const maxW = Math.max(...state.pages.map(p => displaySize(p).w));
+  const two = effectiveView() !== 'single' && state.pages.length > 1;
+  const maxW = Math.max(...state.pages.map(p => displaySize(p).w)) * (two ? 2 : 1);
   const insp = document.getElementById('inspector');
   const reserve = window.innerWidth >= 860 && insp.hidden ? insp.offsetWidth || 272 : 0;
-  const avail = mat.clientWidth - reserve - (window.innerWidth < 860 ? 20 : 56);
+  const avail = mat.clientWidth - reserve - (window.innerWidth < 860 ? 20 : 56) - (two ? 24 : 0);
   const z = clamp(avail / maxW, 0.25, initial ? 1.3 : 4);
   if (initial) { state.zoom = Math.round(z * 100) / 100; emit('zoom'); }
   else setZoom(z);
@@ -225,11 +251,14 @@ export async function pageCanvas(page, minScale = 2) {
 function updateCurrent() {
   if (!state.pages.length) return;
   const r = mat.getBoundingClientRect(), y = r.top + r.height * 0.35;
+  // seules les pages proches de l'écran sont mesurées (rapide même sur un document de plusieurs centaines de pages)
   let best = null, bestD = Infinity;
-  for (const s of slots.values()) {
+  const cand = near.size ? [...near].map(id => slots.get(id)).filter(Boolean) : slots.values();
+  for (const s of cand) {
     const b = s.slot.getBoundingClientRect();
     const d = y < b.top ? b.top - y : y > b.bottom ? y - b.bottom : 0;
-    if (d < bestD) { bestD = d; best = s.page.id; }
+    // à hauteur égale (deux pages côte à côte), la page de gauche l'emporte
+    if (d < bestD || (d === bestD && best && b.left < slots.get(best).slot.getBoundingClientRect().left)) { bestD = d; best = s.page.id; }
   }
   if (best && best !== state.currentPage) { state.currentPage = best; emit('current-page', best); }
 }

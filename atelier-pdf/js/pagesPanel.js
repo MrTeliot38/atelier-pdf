@@ -170,6 +170,7 @@ async function selectionAction(act) {
   if (act === 'rotr') rotatePages(ids, 90);
   if (act === 'dup') duplicatePages(ids);
   if (act === 'del') deletePages(ids);
+  if (act === 'split') { const { openSplitDialog } = await import('./split.js'); openSplitDialog(); }
   if (act === 'extract') { const { downloadPdf } = await import('./export.js'); downloadPdf(ids, '-extrait'); }
 }
 

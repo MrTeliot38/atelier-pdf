@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('atelierDesktop', {
   recentRemove: p => ipcRenderer.invoke('recent:remove', p),
   recentClear: () => ipcRenderer.invoke('recent:clear'),
   saveAs: (name, bytes, current) => ipcRenderer.invoke('file:saveAs', name, bytes, current),
+  saveMany: (files, current) => ipcRenderer.invoke('file:saveMany', files, current),
   reveal: p => ipcRenderer.invoke('file:reveal', p),
   sharePrepare: (name, bytes) => ipcRenderer.invoke('share:prepare', name, bytes),
   shareMail: (p, subject, body) => ipcRenderer.invoke('share:mail', p, subject, body),

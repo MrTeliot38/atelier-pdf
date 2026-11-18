@@ -373,6 +373,26 @@ ipcMain.handle('file:saveAs', guard(async (e, name, bytes, current) => {
   allow(out); addRecent(out);
   return out;
 }));
+// plusieurs PDF d'un coup (division d'un document) : la personne choisit le dossier ; on n'écrase rien
+ipcMain.handle('file:saveMany', guard(async (e, files, current) => {
+  if (!Array.isArray(files) || !files.length || files.length > 2000) throw new Error('Liste de fichiers invalide.');
+  const r = await dialog.showOpenDialog(winOf(e), {
+    title: 'Choisir le dossier où enregistrer les PDF', buttonLabel: 'Enregistrer ici',
+    defaultPath: current ? path.dirname(current) : app.getPath('documents'),
+    properties: ['openDirectory', 'createDirectory'],
+  });
+  if (r.canceled || !r.filePaths?.[0]) return null;
+  const dir = r.filePaths[0], written = [];
+  for (const f of files) {
+    // nom simple uniquement (aucun dossier), toujours en .pdf
+    let base = path.basename(String(f?.name || 'document.pdf')).replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/\.pdf$/i, '').slice(0, 180) || 'document';
+    let out = path.join(dir, base + '.pdf');
+    for (let k = 2; fs.existsSync(out); k++) out = path.join(dir, `${base} (${k}).pdf`);
+    await fs.promises.writeFile(out, Buffer.from(f.bytes));
+    allow(out); written.push(out);
+  }
+  return { dir, files: written };
+}));
 ipcMain.handle('file:reveal', guard((_e, p) => { if ((isAllowed(p) || inShareDir(p)) && fs.existsSync(p)) shell.showItemInFolder(p); }));
 
 /* ---------------- partage ---------------- */
