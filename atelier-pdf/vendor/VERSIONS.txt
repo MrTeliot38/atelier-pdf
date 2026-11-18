@@ -15,3 +15,6 @@ Polices de référence (vendor/fonts/ref, sous-ensembles latins) :
     Nimbus Sans Narrow (Arial Narrow) — AGPL-3.0 avec exception pour l'intégration dans les documents
   Open Sans, Roboto, Montserrat, Source Sans 3, Poppins, Raleway : OFL-1.1 (polices elles-mêmes)
   Sources : google/fonts, ArtifexSoftware/urw-base35-fonts, @docx-editor.dev/fonts 2.37.0 ; sous-ensembles latins (fontTools)
+  EBGaramond-r et -b : tables réécrites par le sous-ensembleur fontTools 4.55.3 (tous glyphes et tables gardés, contenu identique),
+    car leur table GPOS d'origine déclenchait une fausse alerte antivirus « Exploit CVE-2015-2426 » (Avast, AVG, BitDefender…).
+    Pour régénérer : fontTools.subset avec layout_features='*', retain_gids, glyphes = tous les GID.
